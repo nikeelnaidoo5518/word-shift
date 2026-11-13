@@ -9,6 +9,19 @@ if (new URLSearchParams(location.search).get('tv') === '1') {
     .tv-mode .screen { padding: 4vh 4vw; }
     .tv-mode .game-screen { padding: 4vh 4vw; }
     .tv-mode .lobby-aside .aside-details { font-size: 13px; }
+    .tv-mode .topbar, .tv-mode .game-top { flex-shrink: 0; }
+    .tv-mode .demo-label { display: none; }
+    .tv-mode #victory .trophy { font-size: clamp(32px, 7vh, 76px); line-height: 1; }
+    .tv-mode #victory h1 { font-size: clamp(28px, 6vh, 72px); overflow-wrap: anywhere; }
+    .tv-mode #victory .center-stage > p { margin: 6px 0; }
+    .tv-mode #victory .result-panel { margin: 8px auto 12px; }
+    .tv-mode #victory .score-row { padding: 7px 0; }
+    .tv-mode .slot strong, .tv-mode .player-card b { overflow-wrap: anywhere; }
+    .tv-mode .player-card { min-width: 0; }
+    .tv-mode .player-card > span:last-child { min-width: 0; }
+    @media (max-height: 600px) {
+      .tv-mode .room-share { gap: 3px; padding: 10px; }
+    }
   `;
   document.head.appendChild(style);
 

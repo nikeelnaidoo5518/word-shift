@@ -40,3 +40,7 @@ Added a sideloadable Android APK, native server setup and recovery menu, TV laun
 Added an offline MIT-licensed QR encoder and a high-contrast lobby code with a four-module quiet zone. Join URLs use only the server origin and room code; host session tokens and TV parameters are excluded. Hosts using loopback can choose a discovered network interface; address discovery does not trust Host/Forwarded headers. Copying a loopback URL is blocked. QR encoding uses no external service or runtime npm package. Existing game rules are unchanged. The initial TV server connection is still required.
 
 Node tests: 17 pass. Independent QR screenshot decoding and phone join verification are provided by scripts/qr-smoke.cjs. Physical phone-camera and TV testing remains outstanding.
+
+## TV screen fitting follow-up
+
+Kept a 4% inset around TV content. Fixed a clipped victory screen on 960×540 TV/WebView viewports by sizing the trophy/title against height and tightening victory spacing. Long player names can wrap inside player cards instead of widening the screen. Added `scripts/tv-layout.cjs` to check 12 screens/states across four TV resolutions, including long names and tied champions. Phone styles and game rules are unchanged. This layout update is delivered by the server; no APK reinstall is needed.
