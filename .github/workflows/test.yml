@@ -12,4 +12,4 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
-      - run: node --check server.js && node --check client.js && node --check game-engine.js
+      - run: node --check server.js && node --check client.js && node --check game-engine.js && node --check tv.js

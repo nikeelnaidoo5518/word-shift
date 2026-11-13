@@ -237,7 +237,7 @@ function scheduleAI(room) {
 
 function serveStatic(req, res, pathname) {
   const route = pathname === '/' ? '/index.html' : pathname;
-  if (!new Set(['/index.html', '/client.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
+  if (!new Set(['/index.html', '/client.js', '/tv.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
   const file = path.resolve(ROOT, `.${route}`);
   if (!file.startsWith(ROOT + path.sep)) return error(res, 403, 'Forbidden');
   fs.readFile(file, (err, contents) => {

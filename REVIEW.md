@@ -30,3 +30,7 @@ GitHub Actions configuration is included for Node 20/22/24, but cannot be verifi
 
 - 14 Node tests pass on the available Node 24 runtime; JavaScript syntax checks pass.
 - Chromium smoke flow passes with separate desktop-host and mobile-guest contexts: join link, ready/start, three alternating legal moves, results, next round, and join-link refresh restoration, with no browser exceptions. This is emulation, not real-device or cross-browser QA.
+
+## Android TV preview (0.3.0)
+
+Added a sideloadable Android APK, native server setup and recovery menu, TV launcher assets, D-pad navigation isolated behind `?tv=1`, build script and APK build workflow. The server serves the new `tv.js`; ordinary phone controls and game rules are unchanged. APK compilation/signature/manifest checks, native address tests, and a Chromium remote-only room/start plus phone-joining flow pass. This does not implement server hosting, a standalone on-TV game server, a spectator role, QR joining, or store release. Physical Android/Google/Fire TV testing remains outstanding. See `android-tv/README.md`.

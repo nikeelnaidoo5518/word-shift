@@ -46,3 +46,7 @@ See [REVIEW.md](REVIEW.md) for fixes and prioritized remaining work. Move reques
 Party Chaos modifier names currently label rounds and timer variations; their additional special effects are not implemented. The lobby word pack is unreviewed English, not a family-vetted pack. Public hosting and persistent rooms remain future work.
 
 Optional browser smoke test: start the server, then run `node scripts/browser-smoke.cjs` with Playwright available separately. Set `PLAYWRIGHT_MODULE` to its module path if needed, `BROWSER_EXECUTABLE` for an installed Chromium, and `BASE_URL` to override `http://127.0.0.1:4173`. This test uses isolated desktop/mobile browser contexts; it does not add a production npm dependency.
+
+## Install on Android TV / Google TV
+
+A [downloadable TV APK preview](downloads/word-shift-tv-preview.apk) and [installation instructions](android-tv/README.md) are included. It adds a TV launcher, full-screen WebView, server-address setup, remote focus/navigation, and a reconnect menu. The existing computer/hosted Node server is still required; the TV APK does not run the server. Physical-TV testing and app-store publication are not complete.

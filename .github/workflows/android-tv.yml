@@ -1,0 +1,31 @@
+name: Android TV preview
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'android-tv/**'
+      - '.github/workflows/android-tv.yml'
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install official SDK packages
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Test address validation
+        run: |
+          mkdir -p android-tv/build/test-classes
+          javac -d android-tv/build/test-classes android-tv/src/com/wordshift/tv/ServerAddress.java android-tv/tests/ServerAddressTest.java
+          java -cp android-tv/build/test-classes ServerAddressTest
+      - name: Build and verify preview APK
+        run: ANDROID_SDK_ROOT="$ANDROID_HOME" bash android-tv/build-apk.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: word-shift-tv-preview
+          path: |
+            downloads/word-shift-tv-preview.apk
+            downloads/word-shift-tv-preview.apk.sha256
