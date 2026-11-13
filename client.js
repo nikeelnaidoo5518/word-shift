@@ -17,6 +17,8 @@ let joinOrigin = location.origin;
 let joinQrLink = '';
 let networkAddressPending = false;
 let networkAddressLoaded = false;
+let reconnecting = false;
+let reconnectProbe = false;
 
 function show(id) {
   const active = screens.find(screen => screen.classList.contains('active'))?.id;
@@ -61,7 +63,7 @@ async function requestJson(url, options = {}) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
     if (result.state) updateState(result.state);
-    throw new Error(result.error || `Request failed (${response.status}).`);
+    throw Object.assign(new Error(result.error || `Request failed (${response.status}).`), { status: response.status });
   }
   return result;
 }
@@ -109,16 +111,44 @@ async function joinRoom() {
 
 function attachRoom(initial) {
   if (stream) stream.close();
+  setConnectionNotice('');
   updateState(initial);
   const url = `/api/events?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`;
-  stream = new EventSource(url);
-  stream.addEventListener('state', event => {
-    try { updateState(JSON.parse(event.data)); } catch { /* Ignore an incomplete event. */ }
+  const source = new EventSource(url);
+  stream = source;
+  source.addEventListener('state', event => {
+    if (stream !== source) return;
+    try { setConnectionNotice(''); updateState(JSON.parse(event.data)); } catch { /* Ignore an incomplete event. */ }
   });
-  stream.onerror = () => {
-    const label = document.getElementById('lobbyMessage');
-    if (label && state?.phase === 'lobby') label.textContent = 'Reconnecting to the room…';
+  source.addEventListener('expired', event => {
+    if (stream !== source) return;
+    let message = 'This room expired. Create or join a new room.';
+    try { message = JSON.parse(event.data).message || message; } catch { /* Use the default. */ }
+    forgetExpiredRoom(message);
+  });
+  source.onerror = () => {
+    if (stream !== source) return;
+    setConnectionNotice(source.readyState === EventSource.CLOSED ? 'Connection unavailable. Close extra room tabs and reload to reconnect.' : 'Connection lost. Reconnecting…');
+    if (reconnectProbe || !room || !token) return;
+    reconnectProbe = true;
+    requestJson(`/api/rooms/${encodeURIComponent(room)}`).catch(err => {
+      if (stream === source && err.status === 404) forgetExpiredRoom('This room is no longer available. Create or join a new room.');
+    }).finally(() => { reconnectProbe = false; });
   };
+}
+
+function setConnectionNotice(message) {
+  reconnecting = Boolean(message);
+  const notice = document.getElementById('connectionNotice');
+  notice.textContent = message; notice.hidden = !message;
+}
+function forgetExpiredRoom(message) {
+  if (stream) stream.close(); stream = null;
+  localStorage.removeItem(storageKey);
+  room = token = state = null; previousPhase = null; localDeadline = 0;
+  document.getElementById('roomSetup').style.display = 'grid';
+  document.getElementById('lobbyLayout').style.display = 'none';
+  setConnectionNotice(''); setRoomError(message); show('lobby');
 }
 
 function updateState(next) {
@@ -154,7 +184,7 @@ function renderLobby() {
   options[1].textContent = `${state.rounds} · ${state.modeName}`;
   options[3].textContent = 'English · unreviewed';
   const slots = document.getElementById('slots');
-  slots.innerHTML = state.players.map(player => `<div class="slot joined ${player.team || ''}"><span class="avatar">${player.avatar}</span><strong>${escapeHtml(player.name)}${player.id === state.you.id ? ' · You' : ''}</strong><small>${player.isBot ? '● COMPUTER' : player.ready ? '● READY' : '○ NOT READY'}${player.team ? ` · ${player.team.toUpperCase()} TEAM` : ''}</small></div>`).join('') + Array.from({ length: Math.max(0, state.maxPlayers - state.players.length) }, () => '<div class="slot"><span class="empty-slot">＋<br>Waiting for player</span></div>').join('');
+  slots.innerHTML = state.players.map(player => `<div class="slot joined ${player.team || ''}"><span class="avatar">${player.avatar}</span><strong>${escapeHtml(player.name)}${player.id === state.you.id ? ' · You' : ''}</strong><small>${player.isBot ? '● COMPUTER' : player.connected === false ? '○ OFFLINE' : player.ready ? '● READY' : '○ NOT READY'}${player.team ? ` · ${player.team.toUpperCase()} TEAM` : ''}</small></div>`).join('') + Array.from({ length: Math.max(0, state.maxPlayers - state.players.length) }, () => '<div class="slot"><span class="empty-slot">＋<br>Waiting for player</span></div>').join('');
   document.querySelector('.lobby-main .lobby-title h2').innerHTML = `Players <span style="color:var(--muted);font:500 15px var(--sans)">${state.players.length} / ${state.maxPlayers}</span>`;
   const button = document.getElementById('lobbyAction');
   if (state.you.isHost) {
@@ -225,7 +255,7 @@ async function copyJoinLink() {
 }
 
 async function startOrReady() {
-  if (!state || requestBusy) return;
+  if (!state || requestBusy || reconnecting) return;
   requestBusy = true;
   try {
     if (state.you.isHost) {
@@ -260,7 +290,7 @@ function renderGame() {
   document.getElementById('bigword').textContent = state.current.toUpperCase();
   document.getElementById('tiles').innerHTML = letterTiles(state.current, state.target);
   document.getElementById('ladder').innerHTML = state.history.map((word, i) => `<span class="ladder-chip ${i === state.history.length - 1 ? 'current-chip' : ''}">${word.toUpperCase()}</span>`).join('');
-  document.getElementById('players').innerHTML = state.players.map((player, i) => `<div class="player-card ${player.id === state.activePlayerId ? 'active-player' : ''} ${player.team ? `team-${player.team}` : ''}"><span class="miniavatar">${player.avatar}</span><span><b>${escapeHtml(player.name)}</b><small>${player.score} PTS${player.team ? ` · ${player.team.toUpperCase()}` : ''}</small></span></div>`).join('');
+  document.getElementById('players').innerHTML = state.players.map((player, i) => `<div class="player-card ${player.id === state.activePlayerId ? 'active-player' : ''} ${player.team ? `team-${player.team}` : ''}"><span class="miniavatar">${player.avatar}</span><span><b>${escapeHtml(player.name)}</b><small>${player.score} PTS${player.team ? ` · ${player.team.toUpperCase()}` : ''}${player.connected === false ? ' · OFFLINE' : ''}</small></span></div>`).join('');
   paintClock();
 }
 
@@ -303,7 +333,7 @@ function typeKey(letter) {
 }
 
 async function submitWord() {
-  if (!state?.you?.isActive || requestBusy) return;
+  if (!state?.you?.isActive || requestBusy || reconnecting) return;
   const input = document.getElementById('answer');
   const word = input.value.trim().toLowerCase();
   if (!word) { setFeedback('Enter a word to make your shift.'); return; }
@@ -323,7 +353,7 @@ function setFeedback(message) {
 }
 
 async function nextRound() {
-  if (!state?.you?.isHost || requestBusy) return;
+  if (!state?.you?.isHost || requestBusy || reconnecting) return;
   requestBusy = true;
   try { await requestJson(`/api/rooms/${room}/next`, { method: 'POST', body: JSON.stringify({ version: state.version }) }); }
   catch (err) { setFeedback(err.message); }
@@ -331,7 +361,8 @@ async function nextRound() {
 }
 
 async function playAgain() {
-  if (!state?.you?.isHost || requestBusy) { show('home'); return; }
+  if (reconnecting || requestBusy) return;
+  if (!state?.you?.isHost) { show('home'); return; }
   requestBusy = true;
   try { await requestJson(`/api/rooms/${room}/restart`, { method: 'POST', body: JSON.stringify({ version: state.version }) }); }
   catch (err) { setRoomError(err.message); show('lobby'); }
@@ -371,10 +402,16 @@ if (joinFromUrl && (!hasSavedSession || room !== joinFromUrl.toUpperCase())) {
   document.getElementById('joinCode').value = joinFromUrl.toUpperCase().slice(0, 5);
   show('lobby');
 } else if (hasSavedSession) {
+  const restoringRoom = room, restoringToken = token;
   requestJson(`/api/rooms/${encodeURIComponent(room)}?token=${encodeURIComponent(token)}`).then(next => {
+    if (room !== restoringRoom || token !== restoringToken) return;
     attachRoom(next);
     show(next.phase === 'playing' ? (next.you.isHost ? 'tv' : 'phone') : next.phase === 'roundResults' ? 'results' : next.phase === 'complete' ? 'victory' : 'lobby');
-  }).catch(() => { localStorage.removeItem(storageKey); room = token = null; });
+  }).catch(err => {
+    if (room !== restoringRoom || token !== restoringToken) return;
+    if (err.status === 404) forgetExpiredRoom('Your previous room is no longer available. Create or join a new room.');
+    else setConnectionNotice('Could not reconnect. Check your Wi-Fi and reload to try again.');
+  });
 }
 
 window.show = show;

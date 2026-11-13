@@ -7,11 +7,15 @@ const os = require('node:os');
 const crypto = require('node:crypto');
 const { URL } = require('node:url');
 const engine = require('./game-engine');
+const policy = require('./server-policy');
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 4173);
 const HOST = process.env.HOST || '0.0.0.0';
 const ROOM_TTL_MS = 2 * 60 * 60 * 1000;
+const LIMITS = Object.freeze({ rooms: 200, sockets: 1200, streams: 800, streamsPerRoom: 12, streamsPerPlayer: 2, moves: 100, rateBuckets: 5000, bodyTimeoutMs: 5000 });
+const TRUSTED_PROXIES = policy.trustedAddresses(process.env.TRUST_PROXY_ADDRESSES);
+const PUBLIC_ORIGIN = policy.validatePublicOrigin(process.env.PUBLIC_ORIGIN);
 const rooms = new Map();
 const streams = new Map();
 const rateBuckets = new Map();
@@ -42,21 +46,65 @@ function send(res, status, data) {
 function error(res, status, message) { send(res, status, { error: message }); }
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let raw = '';
-    req.on('data', chunk => {
-      raw += chunk;
-      if (raw.length > MAX_BODY) { reject(Object.assign(new Error('Request too large'), { status: 413 })); req.destroy(); }
-    });
-    req.on('end', () => {
+    const chunks = [];
+    let bytes = 0, settled = false;
+    const timer = setTimeout(() => finish(Object.assign(new Error('Request body timed out'), { status: 408 })), LIMITS.bodyTimeoutMs);
+    timer.unref();
+    function finish(err, body) {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      req.off('data', onData); req.off('end', onEnd); req.off('error', onError); req.off('aborted', onAbort);
+      if (err) { req.once('error', () => {}); req.resume(); reject(err); } else resolve(body);
+    }
+    function onData(chunk) {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY) return finish(Object.assign(new Error('Request too large'), { status: 413 }));
+      chunks.push(chunk);
+    }
+    function onEnd() {
       try {
+        const raw = Buffer.concat(chunks).toString('utf8');
         const body = raw ? JSON.parse(raw) : {};
         if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('Expected an object');
-        resolve(body);
-      }
-      catch { reject(Object.assign(new Error('Invalid JSON'), { status: 400 })); }
-    });
-    req.on('error', reject);
+        finish(null, body);
+      } catch { finish(Object.assign(new Error('Invalid JSON'), { status: 400 })); }
+    }
+    function onError(err) { finish(err); }
+    function onAbort() { finish(Object.assign(new Error('Request aborted'), { status: 400 })); }
+    req.on('data', onData); req.on('end', onEnd); req.on('error', onError); req.on('aborted', onAbort);
   });
+}
+function connected(room, id) {
+  return [...(streams.get(room.code) || [])].some(client => !client.destroyed && client.player.id === id);
+}
+function logMove(room, move) {
+  room.moves.push(move);
+  if (room.moves.length > LIMITS.moves) room.moves.splice(0, room.moves.length - LIMITS.moves);
+}
+function writeEvent(client, event, data) {
+  if (client.destroyed || client.writableEnded) return;
+  if (client.writableLength > 256 * 1024) { client.destroy(); return; }
+  client.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+function closeRoom(room, reason = 'This room expired after two hours without player activity.') {
+  if (rooms.get(room.code) !== room) return;
+  rooms.delete(room.code);
+  clearTimeout(room.aiTimer);
+  for (const client of streams.get(room.code) || []) { writeEvent(client, 'expired', { message: reason }); client.end(); }
+  streams.delete(room.code);
+}
+function maintainRooms(now = Date.now()) {
+  for (const room of rooms.values()) {
+    if (now - room.lastActivityAt >= ROOM_TTL_MS) { closeRoom(room); continue; }
+    if (room.hostDisconnectedAt && now - room.hostDisconnectedAt >= 15_000 && !connected(room, room.hostId)) {
+      const successor = room.players.find(player => !player.isBot && connected(room, player.id));
+      if (successor) {
+        room.hostId = successor.id; room.hostDisconnectedAt = null;
+        room.lastMessage = `${successor.name} is now hosting the room.`; touch(room);
+      }
+    }
+    if (room.phase === 'playing' && room.turnDeadline <= now) applyTimeout(room);
+  }
 }
 function getToken(req, url) { return req.headers['x-player-token'] || url.searchParams.get('token') || ''; }
 function requirePlayer(room, token) {
@@ -99,7 +147,7 @@ function publicState(room, player) {
     resets: room.resets,
     version: room.version,
     you: player ? { id: player.id, name: player.name, avatar: player.avatar, isHost: player.id === room.hostId, isActive: player.id === active?.id, ready: player.ready } : null,
-    players: room.players.map(({ id, name, avatar, score, ready, roundWins, isBot }) => ({ id, name, avatar, score, ready, roundWins, isBot: Boolean(isBot), team: room.mode === 'teams' ? (room.players.findIndex(p => p.id === id) % 2 ? 'red' : 'blue') : null })),
+    players: room.players.map(({ id, name, avatar, score, ready, roundWins, isBot }) => ({ id, name, avatar, score, ready, roundWins, isBot: Boolean(isBot), connected: Boolean(isBot) || connected(room, id), team: room.mode === 'teams' ? (room.players.findIndex(p => p.id === id) % 2 ? 'red' : 'blue') : null })),
   };
 }
 function broadcast(room) {
@@ -107,7 +155,7 @@ function broadcast(room) {
   if (!clients) return;
   for (const client of clients) {
     if (client.destroyed) { clients.delete(client); continue; }
-    client.write(`event: state\ndata: ${JSON.stringify(publicState(room, client.player))}\n\n`);
+    writeEvent(client, 'state', publicState(room, client.player));
   }
 }
 function touch(room) { room.updatedAt = Date.now(); room.version++; broadcast(room); if (room.phase === 'playing') scheduleAI(room); }
@@ -177,7 +225,7 @@ function nextRound(room) {
 function applyTimeout(room) {
   if (room.phase !== 'playing') return;
   const player = activePlayer(room);
-  room.moves.push({ playerId: player.id, playerName: player.name, word: null, valid: false, reason: 'TIME’S UP!', at: Date.now() });
+  logMove(room, { playerId: player.id, playerName: player.name, word: null, valid: false, reason: 'TIME’S UP!', at: Date.now() });
   room.lastMessage = `TIME’S UP! ${player.name} loses the turn.`;
   resetTurn(room);
   touch(room);
@@ -192,7 +240,7 @@ function acceptMove(room, player, word) {
   const finale = room.round === room.rounds;
   const points = (100 + (newMatches > oldMatches ? 25 : 0) + (word === room.puzzle.target ? 250 : 0)) * (finale ? 2 : 1);
   player.score += points;
-  room.moves.push({ playerId: player.id, playerName: player.name, word, valid: true, points, at: Date.now() });
+  logMove(room, { playerId: player.id, playerName: player.name, word, valid: true, points, at: Date.now() });
   if (word === room.puzzle.target) {
     room.lastMessage = `${player.name} reached ${room.puzzle.target}! +${points} points.`;
     endRound(room, player.id);
@@ -208,7 +256,7 @@ function acceptMove(room, player, word) {
     room.current = room.puzzle.start;
     room.history = [room.current];
     room.used = new Set(room.history);
-    room.moves.push({ playerId: player.id, playerName: player.name, word: null, valid: false, reason: 'DEAD END · LADDER RESET', at: Date.now() });
+    logMove(room, { playerId: player.id, playerName: player.name, word: null, valid: false, reason: 'DEAD END · LADDER RESET', at: Date.now() });
     room.activeIndex = (room.activeIndex + 1) % room.players.length;
     room.turnDeadline = Date.now() + room.puzzle.timerSeconds * 1000;
     room.lastMessage = `Dead end. The ladder has reset; scores stay with you. ${room.players[room.activeIndex].name} starts.`;
@@ -223,11 +271,12 @@ function acceptMove(room, player, word) {
 function scheduleAI(room) {
   const player = activePlayer(room);
   if (room.phase !== 'playing' || !player?.isBot || room.aiTimer) return;
-  const expectedVersion = room.version;
+  const expectedDeadline = room.turnDeadline;
+  const expectedRound = room.round;
   const delay = engine.BOT_DELAY_MS[player.difficulty] || engine.BOT_DELAY_MS['Quick Thinker'];
   room.aiTimer = setTimeout(() => {
     room.aiTimer = null;
-    if (!rooms.has(room.code) || room.phase !== 'playing' || room.version !== expectedVersion || activePlayer(room)?.id !== player.id) return;
+    if (!rooms.has(room.code) || room.phase !== 'playing' || room.turnDeadline !== expectedDeadline || room.round !== expectedRound || activePlayer(room)?.id !== player.id) return;
     const nextWord = engine.chooseAIMove(room.current, room.puzzle.target, room.used, player.difficulty);
     if (nextWord) acceptMove(room, player, nextWord);
     else applyTimeout(room);
@@ -262,8 +311,10 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { origins });
     }
     if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, rooms: rooms.size });
+    if ((req.method === 'POST' || p === '/api/events') && !policy.allowedOrigin(req, PUBLIC_ORIGIN)) return error(res, 403, 'Open this game from its own server address.');
     if (req.method === 'POST') {
-      const ip = req.socket.remoteAddress || 'local';
+      const ip = policy.clientAddress(req, TRUSTED_PROXIES);
+      if (!rateBuckets.has(ip) && rateBuckets.size >= LIMITS.rateBuckets) return error(res, 503, 'The server is busy. Please try again shortly.');
       const now = Date.now();
       const bucket = rateBuckets.get(ip) || { started: now, count: 0 };
       if (now - bucket.started > 60_000) { bucket.started = now; bucket.count = 0; }
@@ -273,6 +324,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/rooms') {
       const body = await readBody(req);
+      if (rooms.size >= LIMITS.rooms) { maintainRooms(); if (rooms.size >= LIMITS.rooms) return error(res, 503, 'The server has reached its room limit. Try again later.'); }
       const mode = Object.hasOwn(MODES, body.mode) ? body.mode : 'classic';
       const config = MODES[mode];
       const botDifficulty = Object.hasOwn(engine.BOT_DELAY_MS, body.botDifficulty) ? body.botDifficulty : 'Quick Thinker';
@@ -281,7 +333,7 @@ const server = http.createServer(async (req, res) => {
       const players = [player];
       if (mode === 'computer') players.push({ id: randomToken(8), token: null, name: botDifficulty, avatar: '🧠', score: 0, ready: true, roundWins: 0, isBot: true, difficulty: botDifficulty });
       const code = roomCode();
-      const room = { code, mode, players, hostId: player.id, phase: 'lobby', round: 0, rounds: config.rounds, version: 1, history: [], moves: [], used: new Set(), activeIndex: 0, turnDeadline: null, createdAt: Date.now(), updatedAt: Date.now(), lastMessage: 'Room created. Share the code to invite players.', puzzle: null, resets: 0, unresolved: false, roundWinnerId: null, championId: null, championIds: [], championTeam: null, teamWins: { blue: 0, red: 0 } };
+      const room = { code, mode, players, hostId: player.id, phase: 'lobby', round: 0, rounds: config.rounds, version: 1, history: [], moves: [], used: new Set(), activeIndex: 0, turnDeadline: null, createdAt: Date.now(), updatedAt: Date.now(), lastActivityAt: Date.now(), hostDisconnectedAt: null, lastMessage: 'Room created. Share the code to invite players.', puzzle: null, resets: 0, unresolved: false, roundWinnerId: null, championId: null, championIds: [], championTeam: null, teamWins: { blue: 0, red: 0 } };
       rooms.set(code, room);
       return send(res, 201, { state: publicState(room, player), token: player.token, joinUrl: `/?join=${code}` });
     }
@@ -299,6 +351,7 @@ const server = http.createServer(async (req, res) => {
       if (room.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return error(res, 409, 'That nickname is already in this room.');
       const player = { id: randomToken(8), token: randomToken(), name, avatar: ALLOWED_AVATARS.has(body.avatar) ? body.avatar : '🐸', score: 0, ready: false, roundWins: 0, team: room.mode === 'teams' ? (room.players.length % 2 ? 'red' : 'blue') : null };
       room.players.push(player);
+      room.lastActivityAt = Date.now();
       room.lastMessage = `${name} joined the room.`;
       touch(room);
       return send(res, 201, { state: publicState(room, player), token: player.token });
@@ -308,27 +361,33 @@ const server = http.createServer(async (req, res) => {
       const room = rooms.get(roomMatch[1]);
       const player = requirePlayer(room, getToken(req, url));
       if (!player) return error(res, 404, 'Room or player session not found.');
+      room.lastActivityAt = Date.now();
       return send(res, 200, publicState(room, player));
     }
     if (req.method === 'GET' && p === '/api/events') {
       const room = rooms.get(url.searchParams.get('room'));
       const player = requirePlayer(room, getToken(req, url));
       if (!player) return error(res, 404, 'Room or player session not found.');
+      const clients = streams.get(room.code) || new Set();
+      const total = [...streams.values()].reduce((sum, clients) => sum + clients.size, 0);
+      if (total >= LIMITS.streams || clients.size >= LIMITS.streamsPerRoom || [...clients].filter(client => client.player.id === player.id).length >= LIMITS.streamsPerPlayer) {
+        res.setHeader('retry-after', '15');
+        return error(res, 429, 'Too many open room connections. Close another tab and try again.');
+      }
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-      res.write(`event: state\ndata: ${JSON.stringify(publicState(room, player))}\n\n`);
-      if (!streams.has(room.code)) streams.set(room.code, new Set());
-      streams.get(room.code).add(Object.assign(res, { player }));
-      req.on('close', () => {
-        streams.get(room.code)?.delete(res);
-        if (player.id === room.hostId) setTimeout(() => {
-          const connected = [...(streams.get(room.code) || [])];
-          if (rooms.has(room.code) && !connected.some(client => client.player.id === room.hostId) && connected.length) {
-            const successor = connected[0].player;
-            room.hostId = successor.id;
-            room.lastMessage = `${successor.name} is now hosting the room.`;
-            touch(room);
-          }
-        }, 15_000).unref();
+      clients.add(Object.assign(res, { player })); streams.set(room.code, clients);
+      room.lastActivityAt = Date.now();
+      if (player.id === room.hostId) room.hostDisconnectedAt = null;
+      else if (!connected(room, room.hostId) && !room.hostDisconnectedAt) room.hostDisconnectedAt = Date.now();
+      // Presence changes do not change the authoritative move version.
+      broadcast(room);
+      res.on('error', () => res.destroy());
+      res.on('close', () => {
+        clients.delete(res);
+        if (!clients.size && streams.get(room.code) === clients) streams.delete(room.code);
+        if (rooms.get(room.code) !== room) return;
+        if (player.id === room.hostId && !connected(room, player.id)) room.hostDisconnectedAt = Date.now();
+        broadcast(room);
       });
       return;
     }
@@ -338,6 +397,8 @@ const server = http.createServer(async (req, res) => {
       if (!player) return error(res, 404, 'Room or player session not found.');
       const action = roomMatch[2];
       const body = await readBody(req);
+      if (rooms.get(room.code) !== room) return error(res, 404, 'Room has expired.');
+      room.lastActivityAt = Date.now();
       if ((action === 'move' || body.version !== undefined) && body.version !== room.version) {
         return send(res, 409, { error: 'The game changed. Your screen has been updated; try again.', state: publicState(room, player) });
       }
@@ -371,7 +432,7 @@ const server = http.createServer(async (req, res) => {
         else if (!engine.dictionary.has(word)) reason = 'Word not recognized!';
         else if (room.used.has(word)) reason = 'That word has already been used!';
         if (reason) {
-          room.moves.push({ playerId: player.id, playerName: player.name, word, valid: false, reason, at: Date.now() });
+          logMove(room, { playerId: player.id, playerName: player.name, word, valid: false, reason, at: Date.now() });
           room.lastMessage = reason;
           resetTurn(room);
           touch(room);
@@ -401,30 +462,34 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET') return serveStatic(req, res, p);
     return error(res, 404, 'Not found');
   } catch (err) {
+    if (res.destroyed || res.writableEnded) return;
+    if (res.headersSent) return res.destroy();
+    if ([408, 413].includes(err.status)) res.setHeader('connection', 'close');
     return error(res, err.status || 500, err.status ? err.message : 'The game server hit an unexpected error.');
   }
 });
+
+server.maxConnections = LIMITS.sockets;
+server.requestTimeout = 10_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5000;
 
 server.listen(PORT, HOST, () => {
   let lan = [];
   try { lan = Object.values(os.networkInterfaces()).flat().filter(x => x && x.family === 'IPv4' && !x.internal).map(x => `http://${x.address}:${PORT}`); }
   catch { /* Some restricted hosts do not expose network interfaces. */ }
-  console.log(`WORD SHIFT listening at http://localhost:${PORT}`);
+  const actualPort = server.address().port;
+  lan = lan.map(url => url.replace(/:\d+$/, `:${actualPort}`));
+  console.log(`WORD SHIFT listening at http://localhost:${actualPort}`);
   if (lan.length) console.log(`Same-Wi‑Fi phone address: ${lan[0]}`);
 });
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [code, room] of rooms) {
-    if (now - room.updatedAt > ROOM_TTL_MS) { rooms.delete(code); streams.get(code)?.forEach(res => res.end()); streams.delete(code); continue; }
-    if (room.phase === 'playing' && room.turnDeadline <= now) applyTimeout(room);
-  }
-}, 250).unref();
+setInterval(maintainRooms, 250).unref();
 
 setInterval(() => {
   const now = Date.now();
   for (const [ip, bucket] of rateBuckets) if (now - bucket.started > 120_000) rateBuckets.delete(ip);
-  for (const clients of streams.values()) for (const client of clients) if (!client.destroyed) client.write(': keepalive\n\n');
+  for (const clients of streams.values()) for (const client of clients) if (!client.destroyed) { if (client.writableLength > 256 * 1024) client.destroy(); else client.write(': keepalive\n\n'); }
 }, 15_000).unref();
 
-module.exports = { server, rooms, startRound, publicState };
+module.exports = { server, rooms, streams, startRound, publicState, maintainRooms, closeRoom, logMove, LIMITS, ROOM_TTL_MS };

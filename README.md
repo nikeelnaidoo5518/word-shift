@@ -23,7 +23,7 @@ No packages, accounts, or external dictionary calls are required. The server bin
 - Invalid submissions and timeouts pass the turn. Dead ends trigger a limited ladder reset. The server scores valid moves and doubles the Grand Finale.
 - The computer opponent uses the same legal word graph, with five difficulty levels and server-controlled response timing.
 - Head-to-Head and bot matches use first-to-three round wins; Team Battle uses first-to-four; score ties are resolved by round wins and team points.
-- Room codes and session tokens, nickname filtering, request size and rate limits, reconnectable browser sessions, host reassignment after disconnect, and two-hour in-memory room expiry.
+- Room codes and session tokens, nickname filtering, request size and rate limits, reconnectable browser sessions, host reassignment after disconnect, visible offline/reconnect status, and two-hour expiry based on player activity.
 - Responsive Desert Luxe styling and no scrolling in the main play screens.
 
 ## Current scope
@@ -60,3 +60,15 @@ When a computer hosts through `localhost`, the lobby uses a network address inst
 `node scripts/qr-smoke.cjs` optionally verifies the displayed QR with an independent decoder and follows the scanned URL in a separate phone browser. It uses the existing Playwright variables plus `JSQR_MODULE` pointing to a separately installed `jsqr` module; these are development-only tools.
 
 TV layout checks: `node scripts/tv-layout.cjs` (same optional Playwright variables) checks 12 screens/states at 960×540, 1280×720, 1920×1080, and 3840×2160, including four players with long names and a four-way championship tie. Controls, QR, board, and scores must stay inside an overscan-safe area. Set `SHOTS` to an output directory for small-TV reference screenshots. These are browser viewport checks; physical-TV overscan and vendor WebView behavior still need device testing.
+
+## Connection recovery and server limits
+
+Phones show a reconnect notice when the event connection drops; TV/lobby player cards show OFFLINE. Reopening the same browser session restores the player seat. Temporary server errors keep the saved session. If the room expires or the server restarts, clients return to the join screen instead of reconnecting forever. A disconnected host has a 15-second grace period before another connected player takes over. Disconnects keep the original player seat and scores; explicit leave/kick controls and a spectator-only TV role remain future work.
+
+Rooms expire after two hours without a player request or event-stream connection. Automatic timeouts, bot moves, and keepalives do not extend this activity timestamp. Expiry closes event streams and cancels pending AI timers. Recent move/timeout events are limited to 100; the full used-word set and ladder are retained, so unused-word rules and scoring are unchanged.
+
+This single-process server caps rooms at 200, sockets at 1,200, event streams at 800 globally / 12 per room / 2 per player, and rate-limit entries at 5,000. Oversized bodies receive JSON 413; the byte limit is 2,048 including UTF-8. Incomplete bodies time out after five seconds. Stalled event clients with more than 256 KiB queued are disconnected to reconnect normally. Cross-origin browser POST/event-stream requests are rejected.
+
+For HTTPS termination behind a hosting proxy, set `PUBLIC_ORIGIN` to the public game origin (for example `https://game.example`). Only if using a trusted proxy, set `TRUST_PROXY_ADDRESSES` to its exact socket IP addresses, comma separated. Forwarded addresses are ignored by default; wildcard/CIDR trust is not accepted. The proxy must set/append the real client address in `X-Forwarded-For`, preserve event streaming without buffering, and permit idle intervals longer than the 15-second keepalive. These limits and proxy settings do not provide hosted deployment or persistent rooms.
+
+Optional `node scripts/reconnect-smoke.cjs` starts its own test server and verifies real SSE disconnection, same-seat recovery, transient restore errors, and room-expiry cleanup using the separately available Playwright installation.

@@ -18,8 +18,8 @@ Reviewed the restored v0.2 source on 2026-11-13. The initial 11 automated tests 
 
 ## Remaining work, in priority order
 
-1. Public-internet resource controls: room and SSE connection limits, bounded move history, slow request handling, cross-origin request policy, and proxy-aware rate limiting with an explicit trusted-proxy policy. The current per-IP POST limit can group all players behind a hosting proxy and does not bound GET/SSE usage.
-2. Room lifecycle: explicit leave/kick/rejoin behavior, disconnected-player visibility, spectator TV sessions, and expiry based on player activity. Automatic timeouts currently refresh room activity, allowing unattended playing rooms to outlive the advertised two-hour expiry.
+1. Hosting operations: choose a provider and configure HTTPS/proxy access, deployment monitoring, and durable/shared room storage before public deployment. Baseline room/socket/SSE/event-log/body limits, origin checks, and explicit trusted-proxy handling are now implemented; this is not a completed production security review.
+2. Room lifecycle: explicit leave/kick controls and a spectator TV role remain unfinished. Offline visibility, host grace/handoff, recovery from transient failures, and expiry based on player activity are now implemented.
 3. Durable state and deployment: rooms currently disappear on restart; multiple server instances cannot share rooms. Select a hosting provider and storage model before deploying. Health check exists at `/api/health`. Use one instance until shared room ownership is implemented.
 4. Party Chaos: named modifiers currently change announcements/timers; special effects such as Memory Round and Mystery Bonus are not implemented. Preserve the one-letter/unused-word/next-player rule when defining effects.
 5. Accounts, original audio, dictionary family review/localization, more puzzles, and broader real-device/browser QA remain unfinished.
@@ -44,3 +44,12 @@ Node tests: 17 pass. Independent QR screenshot decoding and phone join verificat
 ## TV screen fitting follow-up
 
 Kept a 4% inset around TV content. Fixed a clipped victory screen on 960×540 TV/WebView viewports by sizing the trophy/title against height and tightening victory spacing. Long player names can wrap inside player cards instead of widening the screen. Added `scripts/tv-layout.cjs` to check 12 screens/states across four TV resolutions, including long names and tied champions. Phone styles and game rules are unchanged. This layout update is delivered by the server; no APK reinstall is needed.
+
+## Multiplayer reliability follow-up
+
+- Separate last player activity from automatic state updates so unattended playing rooms expire. Expiry closes streams, cancels AI, and tells browsers to stop retrying the old room.
+- Limit rooms (200), sockets (1,200), event streams (800 total / 12 per room / 2 per player), rate buckets (5,000), and recent events (100). Word reuse checks still retain the full used-word set and ladder.
+- Enforce a UTF-8 byte limit with JSON 413, five-second body timeout with JSON 408, and graceful handling of aborted bodies.
+- Reject cross-origin mutations/SSE. Honor forwarded client IPs only for explicitly listed proxy socket addresses; support an explicit HTTPS public origin.
+- Show offline and reconnect status. Preserve saved sessions during transient failures, restore the same seat, and clear genuinely expired sessions. Presence updates do not invalidate move versions. Host handoff uses a single room timestamp and a 15-second grace period.
+- Verification: 29 Node tests; browser tests for disconnect/recovery/expiry, alternating multiplayer and round progression, QR scanning/joining, and TV layout safety. No hosted service, persistent accounts/rooms, app-store release, or physical-device certification is claimed.
