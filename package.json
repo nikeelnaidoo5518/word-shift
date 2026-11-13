@@ -1,0 +1,13 @@
+{
+  "name": "word-shift",
+  "version": "0.2.0",
+  "private": true,
+  "description": "A browser-based, local multiplayer word-ladder party game.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
