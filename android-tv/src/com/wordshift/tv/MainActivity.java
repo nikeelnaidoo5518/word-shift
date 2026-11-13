@@ -42,7 +42,7 @@ public final class MainActivity extends Activity {
         title.setText("WORD SHIFT"); title.setTextSize(34); title.setTextColor(Color.rgb(245, 199, 107));
         layout.addView(title);
         TextView help = new TextView(this);
-        help.setText("Connect to your game server\nRun npm start on a computer on the same Wi-Fi. Enter its phone address below.\nPlayers open that address on their phones. A hosted server can also be used.");
+        help.setText("Connect to your game server\nRun npm start on a computer on the same Wi-Fi. Enter its phone address below.\nAfter connecting, create a room. Phones on the same Wi-Fi can scan its QR code.");
         help.setTextSize(17); help.setTextColor(Color.rgb(235, 221, 199)); help.setPadding(0, dp(12), 0, dp(14));
         layout.addView(help);
         address = new EditText(this);

@@ -22,7 +22,7 @@ Reviewed the restored v0.2 source on 2026-11-13. The initial 11 automated tests 
 2. Room lifecycle: explicit leave/kick/rejoin behavior, disconnected-player visibility, spectator TV sessions, and expiry based on player activity. Automatic timeouts currently refresh room activity, allowing unattended playing rooms to outlive the advertised two-hour expiry.
 3. Durable state and deployment: rooms currently disappear on restart; multiple server instances cannot share rooms. Select a hosting provider and storage model before deploying. Health check exists at `/api/health`. Use one instance until shared room ownership is implemented.
 4. Party Chaos: named modifiers currently change announcements/timers; special effects such as Memory Round and Mystery Bonus are not implemented. Preserve the one-letter/unused-word/next-player rule when defining effects.
-5. Accounts, QR generation, original audio, dictionary family review/localization, more puzzles, and broader real-device/browser QA remain unfinished.
+5. Accounts, original audio, dictionary family review/localization, more puzzles, and broader real-device/browser QA remain unfinished.
 
 GitHub Actions configuration is included for Node 20/22/24, but cannot be verified remotely until the project is published. It adds no runtime dependencies.
 
@@ -33,4 +33,10 @@ GitHub Actions configuration is included for Node 20/22/24, but cannot be verifi
 
 ## Android TV preview (0.3.0)
 
-Added a sideloadable Android APK, native server setup and recovery menu, TV launcher assets, D-pad navigation isolated behind `?tv=1`, build script and APK build workflow. The server serves the new `tv.js`; ordinary phone controls and game rules are unchanged. APK compilation/signature/manifest checks, native address tests, and a Chromium remote-only room/start plus phone-joining flow pass. This does not implement server hosting, a standalone on-TV game server, a spectator role, QR joining, or store release. Physical Android/Google/Fire TV testing remains outstanding. See `android-tv/README.md`.
+Added a sideloadable Android APK, native server setup and recovery menu, TV launcher assets, D-pad navigation isolated behind `?tv=1`, build script and APK build workflow. The server serves the new `tv.js`; ordinary phone controls and game rules are unchanged. APK compilation/signature/manifest checks, native address tests, and a Chromium remote-only room/start plus phone-joining flow pass. This does not implement server hosting, a standalone on-TV game server, a spectator role or store release. Physical Android/Google/Fire TV testing remains outstanding. See `android-tv/README.md`.
+
+## Same-Wi-Fi QR joining (0.3.1)
+
+Added an offline MIT-licensed QR encoder and a high-contrast lobby code with a four-module quiet zone. Join URLs use only the server origin and room code; host session tokens and TV parameters are excluded. Hosts using loopback can choose a discovered network interface; address discovery does not trust Host/Forwarded headers. Copying a loopback URL is blocked. QR encoding uses no external service or runtime npm package. Existing game rules are unchanged. The initial TV server connection is still required.
+
+Node tests: 17 pass. Independent QR screenshot decoding and phone join verification are provided by scripts/qr-smoke.cjs. Physical phone-camera and TV testing remains outstanding.

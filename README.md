@@ -28,7 +28,7 @@ No packages, accounts, or external dictionary calls are required. The server bin
 
 ## Current scope
 
-This is a playable local-network prototype. QR generation, persistent accounts, hosted deployment, public-internet hardening, original audio assets, and production device/browser QA are not included. Rooms and scores live in server memory and disappear when the server stops.
+This is a playable local-network prototype. Persistent accounts, hosted deployment, public-internet hardening, original audio assets, and production device/browser QA are not included. Rooms and scores live in server memory and disappear when the server stops.
 
 The bundled English word list is offline and includes 32,511 lowercase entries from 3–8 letters. Its source attribution and license text are in `THIRD_PARTY_NOTICES.txt`. The list is not yet family-vetted or localized for South African English, and the current round puzzle selection is a small hand-reviewed set.
 
@@ -50,3 +50,11 @@ Optional browser smoke test: start the server, then run `node scripts/browser-sm
 ## Install on Android TV / Google TV
 
 A [downloadable TV APK preview](downloads/word-shift-tv-preview.apk) and [installation instructions](android-tv/README.md) are included. It adds a TV launcher, full-screen WebView, server-address setup, remote focus/navigation, and a reconnect menu. The existing computer/hosted Node server is still required; the TV APK does not run the server. Physical-TV testing and app-store publication are not complete.
+
+## Scan to join on the same Wi-Fi
+
+After connecting the TV app to the server and creating a room, the lobby shows a QR code. Players connect their phones to the same Wi-Fi, scan it with the camera, and enter a nickname. The room code is filled in automatically. No QR service, internet connection, or npm package is needed. The game server must stay running.
+
+When a computer hosts through `localhost`, the lobby uses a network address instead; if several adapters are available, choose the Wi-Fi address in the lobby's address selector. Guest/client-isolated Wi-Fi or a computer firewall can block joining even on the same network. A manually entered room code and copied join link remain available. The QR never contains the host's session token.
+
+`node scripts/qr-smoke.cjs` optionally verifies the displayed QR with an independent decoder and follows the scanned URL in a separate phone browser. It uses the existing Playwright variables plus `JSQR_MODULE` pointing to a separately installed `jsqr` module; these are development-only tools.

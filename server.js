@@ -237,13 +237,13 @@ function scheduleAI(room) {
 
 function serveStatic(req, res, pathname) {
   const route = pathname === '/' ? '/index.html' : pathname;
-  if (!new Set(['/index.html', '/client.js', '/tv.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
+  if (!new Set(['/index.html', '/client.js', '/tv.js', '/join-code.js', '/vendor/qrcodegen.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
   const file = path.resolve(ROOT, `.${route}`);
   if (!file.startsWith(ROOT + path.sep)) return error(res, 403, 'Forbidden');
   fs.readFile(file, (err, contents) => {
     if (err) return error(res, 404, 'Not found');
     const type = file.endsWith('.html') ? 'text/html; charset=utf-8' : file.endsWith('.js') ? 'text/javascript; charset=utf-8' : file.endsWith('.json') ? 'application/json; charset=utf-8' : 'application/octet-stream';
-    res.writeHead(200, { 'content-type': type, 'cache-control': file.endsWith('.html') ? 'no-store' : 'public, max-age=3600', 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin', 'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'" });
+    res.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'x-content-type-options': 'nosniff', 'referrer-policy': 'same-origin', 'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self' data:; object-src 'none'; frame-ancestors 'none'" });
     res.end(contents);
   });
 }
@@ -252,6 +252,15 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
+    if (req.method === 'GET' && p === '/api/join-origins') {
+      // A loopback URL cannot be scanned by a phone. Never trust Host/Forwarded here.
+      const remote = req.socket.remoteAddress;
+      if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(remote)) return error(res, 403, 'Open the game using its Wi-Fi address.');
+      let interfaces = [];
+      try { interfaces = Object.values(os.networkInterfaces()).flat(); } catch { /* Fall back to the printed address. */ }
+      const origins = [...new Set(interfaces.filter(item => item && item.family === 'IPv4' && !item.internal).map(item => `http://${item.address}:${server.address().port}`))];
+      return send(res, 200, { origins });
+    }
     if (req.method === 'GET' && p === '/api/health') return send(res, 200, { ok: true, rooms: rooms.size });
     if (req.method === 'POST') {
       const ip = req.socket.remoteAddress || 'local';

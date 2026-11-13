@@ -264,3 +264,24 @@ test('moves require a current version and restart clears the champion', async ()
   assert.equal(restarted.status, 200);
   assert.equal(restarted.body.championId, null);
 });
+
+test('offline QR assets and safe local-network address discovery are available', async () => {
+  const base = `http://127.0.0.1:${server.address().port}`;
+  for (const path of ['/join-code.js', '/vendor/qrcodegen.js']) {
+    const response = await fetch(base + path);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /javascript/);
+    assert.equal(response.headers.get('cache-control'), 'no-cache');
+    assert.ok((await response.text()).length > 100);
+  }
+  const response = await fetch(base + '/api/join-origins', { headers: { Host: 'attacker.invalid' } });
+  assert.equal(response.status, 200);
+  const { origins } = await response.json();
+  for (const origin of origins) {
+    const url = new URL(origin);
+    assert.equal(url.protocol, 'http:');
+    assert.match(url.hostname, /^\d+\.\d+\.\d+\.\d+$/);
+    assert.equal(url.port, String(server.address().port));
+    assert.notEqual(url.hostname, '127.0.0.1');
+  }
+});

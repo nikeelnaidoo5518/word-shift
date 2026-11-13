@@ -13,6 +13,10 @@ let selectedLetter = 0;
 let requestBusy = false;
 let previousScreen = 'home';
 let selectedMode = 'classic';
+let joinOrigin = location.origin;
+let joinQrLink = '';
+let networkAddressPending = false;
+let networkAddressLoaded = false;
 
 function show(id) {
   const active = screens.find(screen => screen.classList.contains('active'))?.id;
@@ -145,6 +149,7 @@ function renderLobby() {
   document.getElementById('lobby-mode').textContent = `${state.modeName} · ${state.players.length} / ${state.maxPlayers} players`;
   document.getElementById('roomCode').textContent = state.code;
   document.getElementById('shareCode').textContent = state.code;
+  renderJoinCode();
   const options = document.querySelectorAll('.lobby-options .option b');
   options[1].textContent = `${state.rounds} · ${state.modeName}`;
   options[3].textContent = 'English · unreviewed';
@@ -167,13 +172,55 @@ function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 }
 
+function renderJoinCode() {
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(joinOrigin).hostname);
+  if (loopback) {
+    document.getElementById('joinQr').replaceChildren();
+    document.getElementById('qrHelp').textContent = 'Finding your Wi-Fi address…';
+    if (networkAddressPending || networkAddressLoaded) return;
+    networkAddressPending = true;
+    requestJson('/api/join-origins').then(result => {
+      const origins = result.origins || [];
+      networkAddressLoaded = true;
+      if (!origins.length) throw new Error('Open the game using the Same-Wi-Fi phone address printed by npm start.');
+      const select = document.getElementById('joinAddress');
+      select.replaceChildren(...origins.map(origin => {
+        const option = document.createElement('option'); option.value = origin; option.textContent = origin; return option;
+      }));
+      document.getElementById('joinAddressLabel').hidden = origins.length < 2;
+      select.onchange = () => { joinOrigin = select.value; joinQrLink = ''; renderJoinCode(); };
+      joinOrigin = origins[0];
+      renderJoinCode();
+    }).catch(err => { document.getElementById('qrHelp').textContent = err.message; })
+      .finally(() => { networkAddressPending = false; });
+    return;
+  }
+  const link = WordShiftJoin.joinUrl(joinOrigin, state.code);
+  if (link !== joinQrLink) {
+    try {
+      document.getElementById('joinQr').innerHTML = WordShiftJoin.svgFor(link, qrcodegen);
+      document.getElementById('joinLink').textContent = link;
+      joinQrLink = link;
+    } catch {
+      document.getElementById('qrHelp').textContent = 'QR unavailable. Use the address and room code instead.';
+      document.getElementById('joinLink').textContent = link;
+      return;
+    }
+  }
+  document.getElementById('qrHelp').textContent = 'Same Wi-Fi · scan with your phone camera';
+}
+
 async function copyJoinLink() {
-  const link = `${location.origin}/?join=${encodeURIComponent(state.code)}`;
+  if (['localhost', '127.0.0.1', '[::1]'].includes(new URL(joinOrigin).hostname)) {
+    document.getElementById('lobbyMessage').textContent = 'Open the game using its Same-Wi-Fi phone address before sharing.';
+    return;
+  }
+  const link = WordShiftJoin.joinUrl(joinOrigin, state.code);
   try {
     await navigator.clipboard.writeText(link);
     document.getElementById('lobbyMessage').textContent = 'Join link copied. Send it to players on the same Wi‑Fi.';
   } catch {
-    document.getElementById('lobbyMessage').textContent = `Room code ${state.code} · share this page address with players.`;
+    document.getElementById('lobbyMessage').textContent = `Open ${link} on your phone.`;
   }
 }
 
