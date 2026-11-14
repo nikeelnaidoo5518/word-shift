@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {serve} from './static-server.mjs';
+const require=createRequire(import.meta.url);
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const server=await serve(new URL('../dist',import.meta.url).pathname);
+const base=`http://127.0.0.1:${server.address().port}/word-shift/`;
+const browser=await chromium.launch({executablePath:process.env.BROWSER_EXECUTABLE || undefined,headless:true,args:['--no-sandbox','--no-proxy-server']});
+try {
+  const hostContext=await browser.newContext({viewport:{width:1280,height:720}}),phoneContext=await browser.newContext({viewport:{width:390,height:844}});
+  const host=await hostContext.newPage(),phone=await phoneContext.newPage();
+  const phoneSockets=[];
+  await phone.routeWebSocket('ws://127.0.0.1:9000/**',socket=>{socket.connectToServer();phoneSockets.push(socket);});
+  const errors=[];
+  for(const page of [host,phone]){page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(process.env.DEBUG_ONLINE && ['error','warning'].includes(m.type()))console.log(m.type(),m.text());});}
+  await host.goto(base+'?tv=1');
+  assert.equal(await host.evaluate(()=>WORD_SHIFT_FIREBASE.projectId),'demo-word-shift','Never run this suite against a real Firebase project');
+  await host.evaluate(()=>chooseMode('Classic Multiplayer'));
+  await host.getByRole('button',{name:'Create room →',exact:true}).click();
+  await host.waitForFunction(()=>state?.code,undefined,{timeout:10000}).catch(async e=>{console.log('CREATE FAILED',await host.locator('#roomError').textContent(),errors);throw e;});
+  const code=await host.locator('#roomCode').textContent();
+  assert.match(await host.locator('#joinLink').textContent(),new RegExp(`/word-shift/\\?join=${code}$`));
+  await phone.goto(`${base}?join=${code}`);await phone.locator('#joinName').fill('Firebase Guest');
+  await phone.getByRole('button',{name:'Join →',exact:true}).click();
+  await phone.getByRole('button',{name:'Tap when ready',exact:true}).click();
+  await host.getByRole('button',{name:'Start game',exact:false}).click();
+  await host.locator('#intro.active').waitFor();await host.getByRole('button',{name:'Let’s play',exact:false}).click();
+  await host.locator('#tv button').filter({hasText:'Phone view'}).click();
+  for(const [page,word] of [[host,'dots'],[phone,'cots'],[host,'cats']]) {
+    await page.locator('#phoneTurn').waitFor({state:'visible'});await page.locator('#answer').fill(word);
+    await page.getByRole('button',{name:'SHIFT ↗',exact:true}).click();
+    await page.waitForFunction(word=>state.current===word,word);
+  }
+  for(const page of [host,phone])await page.locator('#results.active').waitFor();
+  const oldVersion=await host.evaluate(()=>state.version);
+  await host.reload();await host.locator('#results.active').waitFor();
+  assert.equal(await host.evaluate(()=>state.version),oldVersion,'Host checkpoint survives reload');
+  await host.getByRole('button',{name:'Next round →',exact:true}).click();
+  await phone.waitForFunction(()=>state.round===2);
+  const uid=await phone.evaluate(()=>state.you.id);
+  await phone.reload();await phone.locator('#phone.active').waitFor();assert.equal(await phone.evaluate(()=>state.you.id),uid);
+  // Stale, invalid, and repeated inputs must retain the same authoritative rules.
+  const invalid=await phone.evaluate(()=>WordShiftOnline.request(`/api/rooms/${room}/move`,{method:'POST',body:JSON.stringify({word:'zzzz',version:state.version})}).then(async r=>({status:r.status,body:await r.json()})));
+  assert.equal(invalid.status,422);
+  assert.equal(invalid.body.state.current,'cold');
+  assert.notEqual(invalid.body.state.activePlayerId,uid);
+  const stale=await host.evaluate(()=>WordShiftOnline.request(`/api/rooms/${room}/move`,{method:'POST',body:JSON.stringify({word:'cord',version:1})}).then(r=>r.status));assert.equal(stale,409);
+  await phoneContext.setOffline(true);
+  for(const socket of phoneSockets)await socket.close({code:1001,reason:'Test disconnect'}).catch(()=>{});
+  await phone.getByText('Connection lost. Reconnecting…',{exact:true}).waitFor();
+  await phoneContext.setOffline(false);
+  await phone.waitForFunction(()=>stream?.readyState===1 && document.getElementById('connectionNotice').hidden);
+  assert.equal(await phone.evaluate(()=>state.you.id),uid);
+  await host.evaluate(code=>WordShiftOnline.closeOwnedRoom(code),code);
+  assert.deepEqual(errors,[]);
+  console.log('PASS: real Firebase TV + separate phone sessions, subpath QR, moves/results, host checkpoint restoration, phone reconnection, invalid/stale turns, and a real database WebSocket reconnect.');
+}finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}

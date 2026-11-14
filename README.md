@@ -1,78 +1,42 @@
 # WORD SHIFT
 
-**Every Letter Counts.** A browser-based word-ladder party game with a TV-sized board and phone controllers.
+**Every Letter Counts.** A TV word-ladder game with phone controllers, five modes, and the original Desert Luxe design.
 
-## Run a local game
+## Online TV version
 
-1. Install Node.js 20 or newer.
-2. In this folder run `npm start`.
-3. Open the `localhost` address printed in the terminal on the main screen.
-4. Choose a mode and create a room, then share the displayed five-character code and host address with players on the same Wi‑Fi.
-5. Players open that address, choose the same mode, enter the code and a nickname, then tap **Ready**. The host starts when everyone is ready.
+The new online build uses GitHub Pages and the existing Firebase project used by SA Trivia. It needs internet and an open TV game screen; it needs no separate computer or manually entered server address.
 
-No packages, accounts, or external dictionary calls are required. The server binds to the local network so phones can join. It is intended for trusted home Wi‑Fi; it is not yet hardened for public internet hosting.
+Planned game address: https://nikeelnaidoo5518.github.io/word-shift/ . Publication requires the repository to be Public and Settings → Pages → Source to be **GitHub Actions**. Do not treat this address as live until its deployment succeeds.
 
-## What works
+Install the [Android TV preview APK](downloads/word-shift-tv-preview.apk), launch WORD SHIFT, create a room, and scan its QR with phone cameras. Enter nicknames and tap Ready. The QR fills in the room code. Phones may use the same Wi-Fi or another internet connection. Keep the TV open and awake throughout the match.
 
-- Five playable modes: Classic Multiplayer, Head-to-Head, Player vs Computer, Team Battle, and Party Chaos.
-- Mode-specific round counts, timers, turn order, modifiers, round wins, and championship conditions.
-- Two to four human players in multiplayer modes; Team Battle seats four players Blue–Red–Blue–Red.
-- Seven curated round puzzles with rotating first player, live room state, and target completion.
-- Phone entry with touch keyboard or device keyboard; TV board shows the shared ladder, current turn, scores, and countdown.
-- Server-authoritative move checks: player turn, exact one-letter change, local dictionary membership, used words, room state, timer, and stale submissions.
-- Invalid submissions and timeouts pass the turn. Dead ends trigger a limited ladder reset. The server scores valid moves and doubles the Grand Finale.
-- The computer opponent uses the same legal word graph, with five difficulty levels and server-controlled response timing.
-- Head-to-Head and bot matches use first-to-three round wins; Team Battle uses first-to-four; score ties are resolved by round wins and team points.
-- Room codes and session tokens, nickname filtering, request size and rate limits, reconnectable browser sessions, host reassignment after disconnect, visible offline/reconnect status, and two-hour expiry based on player activity.
-- Responsive Desert Luxe styling and no scrolling in the main play screens.
+[TV installation and controls](android-tv/README.md) · [Deployment](DEPLOYMENT.md) · [Review and limits](REVIEW.md)
 
-## Current scope
+## Gameplay
 
-This is a playable local-network prototype. Persistent accounts, hosted deployment, public-internet hardening, original audio assets, and production device/browser QA are not included. Rooms and scores live in server memory and disappear when the server stops.
+Change exactly one letter to make a valid unused word. Every submission passes the turn; invalid words and timeouts also pass it. The shared rules validate turns, dictionary membership, used words, deadlines, and stale requests.
 
-The bundled English word list is offline and includes 32,511 lowercase entries from 3–8 letters. Its source attribution and license text are in `THIRD_PARTY_NOTICES.txt`. The list is not yet family-vetted or localized for South African English, and the current round puzzle selection is a small hand-reviewed set.
+Classic, Head-to-Head, Player vs Computer, Team Battle, and Party Chaos remain available. Round scores, championships, five computer difficulties, and team seats are preserved. Party Chaos special modifier effects beyond existing timer variations remain future work.
 
-## Development
+The TV host occupies one player slot. Select Phone view to take its turns using the remote/on-screen keyboard. A spectator-only TV role is not implemented.
 
-- `npm test` runs the game-engine and HTTP room tests using Node's built-in test runner.
-- `server.js` is the dependency-free HTTP/SSE host and authoritative game server.
-- `game-engine.js` contains the indexed word graph, shortest-path search, and move rules.
-- `client.js` manages the TV and phone views and reconnectable room sessions.
+## Run locally without online services
 
-## Reliability follow-up
+Install Node.js 20+, run `npm start`, and open the printed address. Phones use the printed same-Wi-Fi address or scan the room QR. This alternative still runs the original authoritative Node HTTP/SSE server without npm dependencies. Rooms live in process memory. Local host reassignment and request/connection limits remain available.
 
-See [REVIEW.md](REVIEW.md) for fixes and prioritized remaining work. Move requests now require the current `version`; stale requests return the current player-specific state. Automated CI is configured for Node 20, 22, and 24 once published to GitHub.
+## Development and checks
 
-Party Chaos modifier names currently label rounds and timer variations; their additional special effects are not implemented. The lobby word pack is unreviewed English, not a family-vetted pack. Public hosting and persistent rooms remain future work.
+- `npm test`: Node engine, shared game rules, room API, security limits, QR links, and recovery regression tests.
+- `npm run setup:online`: install the separate online development dependencies.
+- `npm run build:online`: generate `dist/` for GitHub Pages using public Firebase client identifiers.
+- `npm run test:firebase`: isolated demo Firebase Auth/database emulators, access-rule checks, separate browser sessions, all five modes, restoration and reconnect tests. Requires Java 21+ and Chromium/Playwright. No production Firebase records are used.
 
-Optional browser smoke test: start the server, then run `node scripts/browser-smoke.cjs` with Playwright available separately. Set `PLAYWRIGHT_MODULE` to its module path if needed, `BROWSER_EXECUTABLE` for an installed Chromium, and `BASE_URL` to override `http://127.0.0.1:4173`. This test uses isolated desktop/mobile browser contexts; it does not add a production npm dependency.
+Optional browser scripts in `scripts/` use separately installed Playwright (`PLAYWRIGHT_MODULE`, `BROWSER_EXECUTABLE`, `BASE_URL`). TV layout checks cover four viewport sizes; they do not replace physical-TV testing.
 
-## Install on Android TV / Google TV
+`game-engine.js` holds the 32,511-word graph and AI; `room-rules.js` shares gameplay between Node and the TV host; `online/transport.js` relays phones through Firebase; `client.js` preserves the existing interface. See `THIRD_PARTY_NOTICES.txt` for dictionary and bundled SDK licenses.
 
-A [downloadable TV APK preview](downloads/word-shift-tv-preview.apk) and [installation instructions](android-tv/README.md) are included. It adds a TV launcher, full-screen WebView, server-address setup, remote focus/navigation, and a reconnect menu. The existing computer/hosted Node server is still required; the TV APK does not run the server. Physical-TV testing and app-store publication are not complete.
+## Current limits
 
-## Scan to join on the same Wi-Fi
+Online rooms use anonymous browser identity and a private host checkpoint, allowing reload recovery in the same browser. These are not persistent user accounts. The TV remains the authority and must stay connected; online host transfer is not implemented. The friendly-game model is not cheat-proof against a modified host client. Firebase free quotas are shared with SA Trivia and do not guarantee unlimited service.
 
-After connecting the TV app to the server and creating a room, the lobby shows a QR code. Players connect their phones to the same Wi-Fi, scan it with the camera, and enter a nickname. The room code is filled in automatically. No QR service, internet connection, or npm package is needed. The game server must stay running.
-
-When a computer hosts through `localhost`, the lobby uses a network address instead; if several adapters are available, choose the Wi-Fi address in the lobby's address selector. Guest/client-isolated Wi-Fi or a computer firewall can block joining even on the same network. A manually entered room code and copied join link remain available. The QR never contains the host's session token.
-
-`node scripts/qr-smoke.cjs` optionally verifies the displayed QR with an independent decoder and follows the scanned URL in a separate phone browser. It uses the existing Playwright variables plus `JSQR_MODULE` pointing to a separately installed `jsqr` module; these are development-only tools.
-
-TV layout checks: `node scripts/tv-layout.cjs` (same optional Playwright variables) checks 12 screens/states at 960×540, 1280×720, 1920×1080, and 3840×2160, including four players with long names and a four-way championship tie. Controls, QR, board, and scores must stay inside an overscan-safe area. Set `SHOTS` to an output directory for small-TV reference screenshots. These are browser viewport checks; physical-TV overscan and vendor WebView behavior still need device testing.
-
-## Connection recovery and server limits
-
-Phones show a reconnect notice when the event connection drops; TV/lobby player cards show OFFLINE. Reopening the same browser session restores the player seat. Temporary server errors keep the saved session. If the room expires or the server restarts, clients return to the join screen instead of reconnecting forever. A disconnected host has a 15-second grace period before another connected player takes over. Disconnects keep the original player seat and scores; explicit leave/kick controls and a spectator-only TV role remain future work.
-
-Rooms expire after two hours without a player request or event-stream connection. Automatic timeouts, bot moves, and keepalives do not extend this activity timestamp. Expiry closes event streams and cancels pending AI timers. Recent move/timeout events are limited to 100; the full used-word set and ladder are retained, so unused-word rules and scoring are unchanged.
-
-This single-process server caps rooms at 200, sockets at 1,200, event streams at 800 globally / 12 per room / 2 per player, and rate-limit entries at 5,000. Oversized bodies receive JSON 413; the byte limit is 2,048 including UTF-8. Incomplete bodies time out after five seconds. Stalled event clients with more than 256 KiB queued are disconnected to reconnect normally. Cross-origin browser POST/event-stream requests are rejected.
-
-For HTTPS termination behind a hosting proxy, set `PUBLIC_ORIGIN` to the public game origin (for example `https://game.example`). Only if using a trusted proxy, set `TRUST_PROXY_ADDRESSES` to its exact socket IP addresses, comma separated. Forwarded addresses are ignored by default; wildcard/CIDR trust is not accepted. The proxy must set/append the real client address in `X-Forwarded-For`, preserve event streaming without buffering, and permit idle intervals longer than the 15-second keepalive. These limits and proxy settings do not provide hosted deployment or persistent rooms.
-
-Optional `node scripts/reconnect-smoke.cjs` starts its own test server and verifies real SSE disconnection, same-seat recovery, transient restore errors, and room-expiry cleanup using the separately available Playwright installation.
-
-## Free online deployment
-
-[Deploy WORD SHIFT on Render](https://render.com/deploy?repo=https://github.com/nikeelnaidoo5518/word-shift) using the included Free-plan `render.yaml`. See [DEPLOYMENT.md](DEPLOYMENT.md) for private GitHub connection steps, free-plan sleep/usage limits, and live verification. The server automatically uses Render's HTTPS origin. Deployment is prepared, not yet live: connecting a Render account is still required. Once the deployed URL is known, it can be built into the TV app to remove manual address entry.
+Rooms expire after two hours without human activity. A running host removes expired records; records left by closed hosts need later cleanup. The dictionary is not family-vetted or localized. Original audio, store publication, production abuse protection, and broader physical-device/browser QA remain unfinished.

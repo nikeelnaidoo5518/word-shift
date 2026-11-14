@@ -1,6 +1,6 @@
 'use strict';
 
-const words = require('./data/words-en.json');
+function createWordShiftEngine(words) {
 const dictionary = new Set(words);
 const indexes = new Map();
 const ALPHABET = 'abcdefghijklmnopqrstuvwxyz';
@@ -106,7 +106,7 @@ function chooseAIMove(current, target, used, difficulty = 'Quick Thinker') {
   return choices.sort((a, b) => a.remaining - b.remaining || b.matches - a.matches || a.options - b.options)[0].word;
 }
 
-module.exports = {
+return {
   words,
   dictionary,
   PUZZLES,
@@ -121,3 +121,9 @@ module.exports = {
   shortestPath,
   targetMatches,
 };
+
+}
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = createWordShiftEngine(require('./data/words-en.json'));
+  module.exports.create = createWordShiftEngine;
+} else globalThis.createWordShiftEngine = createWordShiftEngine;

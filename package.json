@@ -1,11 +1,14 @@
 {
   "name": "word-shift",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "A browser-based, local multiplayer word-ladder party game.",
+  "description": "A TV word-ladder party game with phone controllers.",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test tests/*.test.js",
+    "build:online": "node online/build.mjs",
+    "setup:online": "npm --prefix online ci",
+    "test:firebase": "node online/test-firebase.mjs"
   },
   "engines": {
     "node": ">=20"

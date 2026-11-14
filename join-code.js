@@ -6,7 +6,8 @@
     const url = new URL(origin);
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('Use an HTTP or HTTPS game server address.');
     if (!/^[A-HJ-NP-Z2-9]{5}$/.test(code)) throw new Error('Invalid room code.');
-    url.pathname = '/'; url.search = ''; url.hash = '';
+    if (!url.pathname.endsWith('/')) url.pathname += '/';
+    url.search = ''; url.hash = '';
     url.searchParams.set('join', code);
     return url.href;
   }

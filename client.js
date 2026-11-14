@@ -13,7 +13,7 @@ let selectedLetter = 0;
 let requestBusy = false;
 let previousScreen = 'home';
 let selectedMode = 'classic';
-let joinOrigin = location.origin;
+let joinOrigin = globalThis.WordShiftOnline?.enabled ? new URL('.', location.href).href : location.origin;
 let joinQrLink = '';
 let networkAddressPending = false;
 let networkAddressLoaded = false;
@@ -56,7 +56,8 @@ function sessionHeaders() {
 }
 
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
+  const sendRequest = globalThis.WordShiftOnline?.enabled ? WordShiftOnline.request : fetch;
+  const response = await sendRequest(url, {
     ...options,
     headers: { 'content-type': 'application/json', ...sessionHeaders(), ...(options.headers || {}) },
   });
@@ -114,7 +115,7 @@ function attachRoom(initial) {
   setConnectionNotice('');
   updateState(initial);
   const url = `/api/events?room=${encodeURIComponent(room)}&token=${encodeURIComponent(token)}`;
-  const source = new EventSource(url);
+  const source = globalThis.WordShiftOnline?.enabled ? WordShiftOnline.events(room, token) : new EventSource(url);
   stream = source;
   source.addEventListener('state', event => {
     if (stream !== source) return;
@@ -204,7 +205,7 @@ function escapeHtml(value) {
 
 function renderJoinCode() {
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(joinOrigin).hostname);
-  if (loopback) {
+  if (loopback && !globalThis.WordShiftOnline?.enabled) {
     document.getElementById('joinQr').replaceChildren();
     document.getElementById('qrHelp').textContent = 'Finding your Wi-Fi address…';
     if (networkAddressPending || networkAddressLoaded) return;
@@ -237,18 +238,18 @@ function renderJoinCode() {
       return;
     }
   }
-  document.getElementById('qrHelp').textContent = 'Same Wi-Fi · scan with your phone camera';
+  document.getElementById('qrHelp').textContent = globalThis.WordShiftOnline?.enabled ? 'Scan with your phone camera · internet required' : 'Same Wi-Fi · scan with your phone camera';
 }
 
 async function copyJoinLink() {
-  if (['localhost', '127.0.0.1', '[::1]'].includes(new URL(joinOrigin).hostname)) {
+  if (!globalThis.WordShiftOnline?.enabled && ['localhost', '127.0.0.1', '[::1]'].includes(new URL(joinOrigin).hostname)) {
     document.getElementById('lobbyMessage').textContent = 'Open the game using its Same-Wi-Fi phone address before sharing.';
     return;
   }
   const link = WordShiftJoin.joinUrl(joinOrigin, state.code);
   try {
     await navigator.clipboard.writeText(link);
-    document.getElementById('lobbyMessage').textContent = 'Join link copied. Send it to players on the same Wi‑Fi.';
+    document.getElementById('lobbyMessage').textContent = globalThis.WordShiftOnline?.enabled ? 'Join link copied. Send it to your players.' : 'Join link copied. Send it to players on the same Wi‑Fi.';
   } catch {
     document.getElementById('lobbyMessage').textContent = `Open ${link} on your phone.`;
   }

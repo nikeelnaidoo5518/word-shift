@@ -7,6 +7,7 @@ tools="$ANDROID_SDK_ROOT/build-tools/35.0.0"
 platform="$ANDROID_SDK_ROOT/platforms/android-35/android.jar"
 build="$project_dir/build"
 output="$project_dir/../downloads"
+rm -rf "$build/classes" "$build/dex"
 mkdir -p "$build/classes" "$build/dex" "$output"
 "$tools/aapt2" compile --dir "$project_dir/res" -o "$build/resources.zip"
 "$tools/aapt2" link -o "$build/base.apk" --manifest "$project_dir/AndroidManifest.xml" -I "$platform" "$build/resources.zip"
@@ -28,7 +29,7 @@ preview_key="${WORDSHIFT_PREVIEW_KEY:-$project_dir/.local-preview-key.jks}"
 if [ ! -f "$preview_key" ]; then
   keytool -genkeypair -keystore "$preview_key" -storepass android -keypass android -alias wordshift-preview -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=WORD SHIFT Preview' -noprompt
 fi
-"$tools/apksigner" sign --ks "$preview_key" --ks-key-alias wordshift-preview --ks-pass pass:android --key-pass pass:android --out "$output/word-shift-tv-preview.apk" "$build/aligned.apk"
+"$tools/apksigner" sign --v4-signing-enabled false --ks "$preview_key" --ks-key-alias wordshift-preview --ks-pass pass:android --key-pass pass:android --out "$output/word-shift-tv-preview.apk" "$build/aligned.apk"
 "$tools/apksigner" verify --verbose "$output/word-shift-tv-preview.apk"
 (cd "$output" && sha256sum word-shift-tv-preview.apk > word-shift-tv-preview.apk.sha256)
 printf 'APK created: %s\n' "$output/word-shift-tv-preview.apk"

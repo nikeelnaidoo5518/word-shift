@@ -1,45 +1,30 @@
-# Free online hosting with Render
+# Online deployment
 
-The repository is prepared for a Render **Free Web Service**. A running Node service is required; static-only hosting cannot run the multiplayer room server. Deployment still needs the repository owner's Render account and GitHub authorization. No live hosted URL has been created from this workspace.
+WORD SHIFT now supports the same architecture as SA Trivia: a static GitHub Pages frontend and Firebase anonymous authentication/Realtime Database. No always-running Node host or separate computer is required. The TV runs authoritative gameplay while open.
 
-## Deploy
+## GitHub settings
 
-1. Open [Deploy WORD SHIFT on Render](https://render.com/deploy?repo=https://github.com/nikeelnaidoo5518/word-shift).
-2. Sign in or create a Render account. Connect GitHub and grant Render access to the private **nikeelnaidoo5518/word-shift** repository. Grant access only to that repository if you prefer.
-3. Use the included `render.yaml` Blueprint. Confirm the web service is on **Free**, and create/deploy it. The Blueprint provisions no database or disk and does not select a paid plan.
-4. Wait for the service to show **Live**, then open the exact HTTPS URL Render provides. Do not guess the hostname: Render may add a suffix.
-5. Confirm `/api/health` on that URL returns `{"ok":true,...}`. Create a room in two browser sessions, join, tap Ready, and test moves. This live verification has not yet been performed here.
-6. Send that HTTPS URL back to this chat. It can then be embedded into the TV APK to replace the initial server-address screen. Until that updated APK is built, the current preview accepts the hosted URL in its address field.
+The owner approved public source. The connected GitHub app can publish code but receives HTTP 403 for repository administration. The owner must set:
 
-If the deploy link cannot select the private repository, install [Render's GitHub App](https://github.com/apps/render) for WORD SHIFT, then create **New → Blueprint** from that repository. Alternatively create **New → Web Service** with the manual settings below.
+1. Repository Settings → General → Danger Zone → Change visibility → Public.
+2. Settings → Pages → Build and deployment → Source → GitHub Actions.
 
-## Manual settings
+Then run **Publish online WORD SHIFT** under Actions, or push to main. Its workflow tests, builds and deploys `dist/`. Intended address: https://nikeelnaidoo5518.github.io/word-shift/ . Verify the deployment before distributing the TV APK, which opens this address automatically.
 
-| Setting | Value |
-| --- | --- |
-| Repository | `nikeelnaidoo5518/word-shift` |
-| Branch | `main` |
-| Runtime | Node |
-| Build command | `npm test` |
-| Start command | `npm start` |
-| Instance plan | **Free** |
-| Health check | `/api/health` |
-| Environment | `NODE_VERSION=22`, `HOST=0.0.0.0` |
+## Firebase compatibility
 
-Render supplies `PORT` and `RENDER_EXTERNAL_URL` automatically. The server uses the latter for same-origin HTTPS validation behind Render's proxy. `PUBLIC_ORIGIN` can override it when using a custom domain. Forwarded client IPs remain untrusted by default, so the existing POST limit can be shared by clients behind Render's proxy. Configure explicit trusted proxy addresses only when verified; do not add wildcard proxy trust.
+The build uses public web client identifiers for the owner's existing SA Trivia Firebase project. Anonymous sign-in and its existing access rules were verified using one temporary WORD SHIFT room, two browser sessions and a legal move; that room was deleted afterward. No production rules or existing game rooms were changed.
 
-Automatic deploys are disabled in the Blueprint so repository updates do not restart an ongoing match. Deploy changes manually from the Render dashboard when players have finished. Use one service instance: the current room state is not shared between servers.
+WORD SHIFT uses `rooms/W` plus its five-character room code and checks `state.game === 'word-shift'`. Creation avoids existing records. Host checkpoints and request ledgers use host-private input data; phones write only their own membership/inputs and read their own feedback. `firebase/compatible.rules.json` is a reference/test fixture, not an instruction to redeploy another game's rules.
 
-## Free-plan behavior
+Do not deploy emulator configuration. Normal builds use `online/firebase-config.js`; only `WORDSHIFT_EMULATORS=1` builds use the demo project and loopback endpoints. CI emulator tests are isolated from production.
 
-Checked against Render's official documentation on 2026-11-14:
+Firebase Spark quotas and project settings are shared with the other game. No paid plan is required by this implementation, but free usage limits still apply. TV closure stops turns/AI processing; same-browser reload restores the private checkpoint. Account loss/device changes cannot restore host ownership. Expired records left after host closure need a cleanup policy.
 
-- Node web services have a Free plan, with managed HTTPS and a Render subdomain.
-- Free services spin down after 15 minutes without inbound traffic; waking takes about one minute. A quiet lobby may disconnect even if its SSE connection was open.
-- The workspace includes 750 free instance hours per month. Bandwidth/build usage has separate included limits; without a payment method, exceeding applicable limits can suspend services or builds. Adding a payment method can allow usage charges. Keep the service on Free and review the account's usage settings.
-- Instances can restart, and the filesystem is ephemeral. WORD SHIFT currently stores rooms in memory, so sleep, restarts, and deployments lose the current rooms. Persistent rooms/accounts have not been implemented.
-- Internet is required on the TV and phones. They no longer need a computer running the server, and can join from different networks.
+## Verification
 
-This is free hobby/testing hosting, not a promise of an always-on production service. Do not use artificial keepalive traffic to bypass the provider's idle policy.
+Before calling a release live: confirm a successful Pages deployment, open the public URL, create a TV room, scan the QR on a separate phone, play alternating moves, reload the host, and remove the QA room. Install and test the APK on a physical TV separately. Browser and emulator success do not verify physical hardware.
 
-Official sources: [Free plan and limits](https://render.com/docs/free), [Blueprint configuration](https://render.com/docs/blueprint-spec), [automatic environment variables](https://render.com/docs/environment-variables), [private repository deploy buttons](https://render.com/docs/deploy-to-render).
+## Optional Node hosting
+
+`npm start` retains the dependency-free HTTP/SSE server. `render.yaml` remains an optional Render setup, not the chosen online deployment. For another HTTPS proxy, configure `PUBLIC_ORIGIN`; trust only exact proxy socket IPs through `TRUST_PROXY_ADDRESSES`. Preserve SSE streaming. Node rooms remain in memory and disappear on server restart.

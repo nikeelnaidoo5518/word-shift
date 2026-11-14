@@ -4,3 +4,7 @@ node_modules/
 coverage/
 android-tv/build/
 android-tv/*.jks
+
+dist/
+*-debug.log
+.firebase/

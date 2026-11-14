@@ -17,3 +17,7 @@ test('join links reject unsafe origins and invalid room codes', () => {
     assert.throws(() => joinUrl('http://192.168.1.20:4173', code));
   }
 });
+
+test('online QR links preserve the GitHub Pages project directory', () => {
+  assert.equal(joinUrl('https://nikeelnaidoo5518.github.io/word-shift/?tv=1','ABCDE'),'https://nikeelnaidoo5518.github.io/word-shift/?join=ABCDE');
+});
