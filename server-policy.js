@@ -34,4 +34,7 @@ function validatePublicOrigin(value = '') {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/') throw new Error('PUBLIC_ORIGIN must be an HTTP(S) origin without a path or credentials.');
   return url.origin;
 }
-module.exports = { clientAddress, trustedAddresses, allowedOrigin, validatePublicOrigin };
+function configuredOrigin(env = process.env) {
+  return validatePublicOrigin(env.PUBLIC_ORIGIN || env.RENDER_EXTERNAL_URL || '');
+}
+module.exports = { clientAddress, trustedAddresses, allowedOrigin, validatePublicOrigin, configuredOrigin };

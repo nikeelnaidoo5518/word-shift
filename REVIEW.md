@@ -53,3 +53,7 @@ Kept a 4% inset around TV content. Fixed a clipped victory screen on 960×540 TV
 - Reject cross-origin mutations/SSE. Honor forwarded client IPs only for explicitly listed proxy socket addresses; support an explicit HTTPS public origin.
 - Show offline and reconnect status. Preserve saved sessions during transient failures, restore the same seat, and clear genuinely expired sessions. Presence updates do not invalidate move versions. Host handoff uses a single room timestamp and a 15-second grace period.
 - Verification: 29 Node tests; browser tests for disconnect/recovery/expiry, alternating multiplayer and round progression, QR scanning/joining, and TV layout safety. No hosted service, persistent accounts/rooms, app-store release, or physical-device certification is claimed.
+
+## Free hosting preparation
+
+Added a Render Blueprint selecting only a Free Node web service, with test-before-build, health checking, and manual deploys. The server now reads Render's automatic HTTPS URL for origin checks, with explicit PUBLIC_ORIGIN taking priority. Documented private-repository connection and free-plan limitations in DEPLOYMENT.md. This workspace has no Render account access and no service was created or verified live. The TV APK cannot be pointed automatically to an unknown URL; that follow-up needs the actual deployed URL. In-memory rooms still disappear on service sleep/restart.

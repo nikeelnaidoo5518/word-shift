@@ -1,0 +1,16 @@
+# Free single-instance hosting. No databases, disks, or paid resources are provisioned.
+services:
+  - type: web
+    name: word-shift
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm test
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: HOST
+        value: '0.0.0.0'

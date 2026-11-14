@@ -25,3 +25,14 @@ test('browser mutations and event streams must come from the game origin', () =>
   assert.equal(validatePublicOrigin('https://game.example/'), 'https://game.example');
   for (const value of ['file:///tmp','https://name:secret@game.example','https://game.example/path']) assert.throws(() => validatePublicOrigin(value));
 });
+
+test('Render HTTPS origin is configured automatically and explicit configuration takes precedence', () => {
+  const {configuredOrigin} = require('../server-policy');
+  const deployed = configuredOrigin({RENDER_EXTERNAL_URL:'https://word-shift-example.onrender.com'});
+  assert.equal(deployed,'https://word-shift-example.onrender.com');
+  assert.equal(allowedOrigin(request('127.0.0.1',{host:'internal:10000',origin:deployed}),deployed),true);
+  assert.equal(allowedOrigin(request('127.0.0.1',{host:'internal:10000',origin:'https://evil.example'}),deployed),false);
+  assert.equal(configuredOrigin({PUBLIC_ORIGIN:'https://game.example',RENDER_EXTERNAL_URL:deployed}),'https://game.example');
+  assert.equal(configuredOrigin({}),'');
+  assert.throws(()=>configuredOrigin({RENDER_EXTERNAL_URL:'file:///tmp'}));
+});

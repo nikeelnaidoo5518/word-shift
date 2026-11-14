@@ -72,3 +72,7 @@ This single-process server caps rooms at 200, sockets at 1,200, event streams at
 For HTTPS termination behind a hosting proxy, set `PUBLIC_ORIGIN` to the public game origin (for example `https://game.example`). Only if using a trusted proxy, set `TRUST_PROXY_ADDRESSES` to its exact socket IP addresses, comma separated. Forwarded addresses are ignored by default; wildcard/CIDR trust is not accepted. The proxy must set/append the real client address in `X-Forwarded-For`, preserve event streaming without buffering, and permit idle intervals longer than the 15-second keepalive. These limits and proxy settings do not provide hosted deployment or persistent rooms.
 
 Optional `node scripts/reconnect-smoke.cjs` starts its own test server and verifies real SSE disconnection, same-seat recovery, transient restore errors, and room-expiry cleanup using the separately available Playwright installation.
+
+## Free online deployment
+
+[Deploy WORD SHIFT on Render](https://render.com/deploy?repo=https://github.com/nikeelnaidoo5518/word-shift) using the included Free-plan `render.yaml`. See [DEPLOYMENT.md](DEPLOYMENT.md) for private GitHub connection steps, free-plan sleep/usage limits, and live verification. The server automatically uses Render's HTTPS origin. Deployment is prepared, not yet live: connecting a Render account is still required. Once the deployed URL is known, it can be built into the TV app to remove manual address entry.
