@@ -6,7 +6,7 @@
 
 The new online build uses GitHub Pages and the existing Firebase project used by SA Trivia. It needs internet and an open TV game screen; it needs no separate computer or manually entered server address.
 
-Planned game address: https://nikeelnaidoo5518.github.io/word-shift/ . Publication requires the repository to be Public and Settings → Pages → Source to be **GitHub Actions**. Do not treat this address as live until its deployment succeeds.
+Play online: https://nikeelnaidoo5518.github.io/word-shift/ . GitHub Pages is enabled and the public game was verified with separate TV/phone sessions.
 
 Install the [Android TV preview APK](downloads/word-shift-tv-preview.apk), launch WORD SHIFT, create a room, and scan its QR with phone cameras. Enter nicknames and tap Ready. The QR fills in the room code. Phones may use the same Wi-Fi or another internet connection. Keep the TV open and awake throughout the match.
 
@@ -39,4 +39,12 @@ Optional browser scripts in `scripts/` use separately installed Playwright (`PLA
 
 Online rooms use anonymous browser identity and a private host checkpoint, allowing reload recovery in the same browser. These are not persistent user accounts. The TV remains the authority and must stay connected; online host transfer is not implemented. The friendly-game model is not cheat-proof against a modified host client. Firebase free quotas are shared with SA Trivia and do not guarantee unlimited service.
 
-Rooms expire after two hours without human activity. A running host removes expired records; records left by closed hosts need later cleanup. The dictionary is not family-vetted or localized. Original audio, store publication, production abuse protection, and broader physical-device/browser QA remain unfinished.
+Rooms expire after two hours without human activity. A running host removes expired records; records left by closed hosts need later cleanup. The dictionary is not family-vetted or localized. Store publication, production abuse protection, and broader physical-device/browser QA remain unfinished.
+
+## 0.6 controls and music
+
+The top Menu button offers Resume, End game (host only), Return to start, How to play, Options and Music. The host returning to start ends the shared match; a guest returning leaves their local view. Ending stops timers and further submissions for everyone. TV Back/Menu → Game menu opens the same controls in the updated APK. The menu does not pause a running turn.
+
+The side counter shows successful shifts this round and your contribution; the phone also shows both counts. Invalid submissions do not count and still pass the turn. Counters reset each round. Created by **Nikeel Naidoo**.
+
+An original, softly synthesized classical-style waltz plays after a user interaction. Music can be muted in Menu or Options, remembers your choice, and pauses in hidden tabs. Phones default to muted to avoid several devices playing together. No third-party recording or audio service is used.

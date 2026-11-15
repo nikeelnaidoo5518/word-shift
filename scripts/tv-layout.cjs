@@ -14,7 +14,7 @@ const sizes = [[960,540],[1280,720],[1920,1080],[3840,2160]];
       const errors=[]; page.on('pageerror',error=>errors.push(error.message));
       await page.goto(base+'/?tv=1');
       await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important}'});
-      const scenes=['home','modes','setup','lobby','intro','tv','phone','results','victory','victory-tie','how','settings'];
+      const scenes=['home','modes','setup','lobby','intro','tv','phone','results','victory','victory-tie','how','settings','matchMenu','ended'];
       for(const scene of scenes) {
         await page.evaluate(scene=>{
           const players=Array.from({length:4},(_,i)=>({id:String(i),name:['Alexandria the Fox','Christopher Player','Long Nickname Here','Extra Long Player'][i],avatar:'🦊',score:12500,roundWins:2,ready:true,connected:i!==2,team:i%2?'red':'blue'}));
@@ -30,7 +30,7 @@ const sizes = [[960,540],[1280,720],[1920,1080],[3840,2160]];
         if(scene==='lobby')await page.locator('#joinQr svg').waitFor();
         const issues=await page.evaluate(()=>{
           const active=document.querySelector('.screen.active');
-          const selectors='button,input,select,.page-head,.slot,.lobby-options,.join-qr,#joinLink,#qrHelp,#roomCode,#bigword,#tiles,#bigTimer,.endpoint,#players,.result-panel,.center-stage h1,.center-stage>p,.hero-copy,.slot strong,.player-card b,.player-card small,.score-row,#championName';
+          const selectors='button,input,select,.page-head,.slot,.lobby-options,.join-qr,#joinLink,#qrHelp,#roomCode,#bigword,#tiles,#bigTimer,.endpoint,#players,.result-panel,.center-stage h1,.center-stage>p,.hero-copy,.slot strong,.player-card b,.player-card small,.score-row,#championName,#tvMoves,#phoneMoves,.creator-credit';
           return [...active.querySelectorAll(selectors)].filter(el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden').flatMap(el=>{
             const r=el.getBoundingClientRect();
             if(r.left < innerWidth*.035-1 || r.right > innerWidth*.965+1 || r.top < innerHeight*.035-1 || r.bottom > innerHeight*.965+1) return [{element:el.id||el.className||el.tagName,box:[Math.round(r.x),Math.round(r.y),Math.round(r.width),Math.round(r.height)]}];
@@ -45,6 +45,6 @@ const sizes = [[960,540],[1280,720],[1920,1080],[3840,2160]];
     }
     if(failures.length)console.log(JSON.stringify(failures,null,2));
     assert.equal(failures.length,0,'All TV screens must fit inside the overscan-safe area');
-    console.log('PASS: 12 TV screens fit at 960×540, 1280×720, 1920×1080, and 3840×2160.');
+    console.log('PASS: 14 TV screens fit at 960×540, 1280×720, 1920×1080, and 3840×2160.');
   } finally {await browser.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});

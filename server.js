@@ -136,7 +136,7 @@ function scheduleAI(room) {
 
 function serveStatic(req, res, pathname) {
   const route = pathname === '/' ? '/index.html' : pathname;
-  if (!new Set(['/index.html', '/client.js', '/tv.js', '/join-code.js', '/vendor/qrcodegen.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
+  if (!new Set(['/index.html', '/client.js', '/music.js', '/tv.js', '/join-code.js', '/vendor/qrcodegen.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
   const file = path.resolve(ROOT, `.${route}`);
   if (!file.startsWith(ROOT + path.sep)) return error(res, 403, 'Forbidden');
   fs.readFile(file, (err, contents) => {
@@ -206,7 +206,7 @@ const server = http.createServer(async (req, res) => {
       touch(room);
       return send(res, 201, { state: publicState(room, player), token: player.token });
     }
-    const roomMatch = p.match(/^\/api\/rooms\/([A-Z2-9]+)(?:\/(ready|start|move|next|restart))?$/);
+    const roomMatch = p.match(/^\/api\/rooms\/([A-Z2-9]+)(?:\/(ready|start|move|next|restart|end))?$/);
     if (req.method === 'GET' && roomMatch && !roomMatch[2]) {
       const room = rooms.get(roomMatch[1]);
       const player = requirePlayer(room, getToken(req, url));

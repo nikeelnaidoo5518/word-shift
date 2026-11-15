@@ -31,3 +31,26 @@ test('all five modes have identical TV-host rules for readiness, round rotation 
     assert.equal(room.round,2);assert.equal(room.activeIndex,1);assert.equal(room.rounds,definition.rounds);
   }
 });
+
+test('round move counters count only legal shifts, survive log limits and reset next round',()=>{
+  const rules=createRules(engine),room=rules.makeRoom({code:'ABCDE',hostId:'host'});
+  room.players.push({id:'guest',name:'Guest',score:0,ready:true,roundWins:0});
+  rules.action(room,room.players[0],'start');
+  assert.equal(rules.action(room,room.players[0],'move',{word:'cats',version:room.version}).status,422,'two-letter change rejected');
+  assert.equal(rules.publicState(room,null).totalMoves,0);
+  for(const word of ['dots','cots','cats'])assert.equal(rules.action(room,rules.activePlayer(room),'move',{word,version:room.version}).status,200);
+  assert.equal(rules.publicState(room,null).totalMoves,3);
+  assert.equal(room.moveCounts.guest,2);assert.equal(room.moveCounts.host,1);
+  rules.action(room,room.players[0],'next');assert.equal(rules.publicState(room,null).totalMoves,0);
+});
+
+test('only host can end a match; all later moves stop and the deadline is cleared',()=>{
+  const rules=createRules(engine),room=rules.makeRoom({code:'ABCDE',hostId:'host'});
+  room.players.push({id:'guest',name:'Guest',score:0,ready:true,roundWins:0});
+  rules.action(room,room.players[0],'start');
+  assert.equal(rules.action(room,room.players[1],'end',{version:room.version}).status,403);
+  assert.equal(rules.action(room,room.players[0],'end',{version:room.version-1}).status,409);
+  assert.equal(rules.action(room,room.players[0],'end',{version:room.version}).status,200);
+  assert.equal(room.phase,'ended');assert.equal(room.turnDeadline,null);
+  assert.equal(rules.action(room,room.players[0],'move',{word:'dots',version:room.version}).status,409);
+});

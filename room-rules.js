@@ -35,6 +35,8 @@ function publicState(room, player) {
     current: room.current || null,
     history: room.history,
     moves: room.moves,
+    moveCounts: room.moveCounts || {},
+    totalMoves: Object.values(room.moveCounts || {}).reduce((a, b) => a + b, 0),
     activePlayerId: active?.id || null,
     activePlayerName: active?.name || null,
     secondsLeft: countdown,
@@ -64,6 +66,7 @@ function startRound(room) {
   room.history = [room.current];
   room.used = new Set(room.history);
   room.moves = [];
+  room.moveCounts = {};
   room.resets = 0;
   room.unresolved = false;
   room.roundWinnerId = null;
@@ -125,6 +128,8 @@ function applyTimeout(room) {
   touch(room);
 }
 function acceptMove(room, player, word) {
+  room.moveCounts ||= {};
+  room.moveCounts[player.id] = (room.moveCounts[player.id] || 0) + 1;
   const previous = room.current;
   const oldMatches = engine.targetMatches(previous, room.puzzle.target);
   room.current = word;
@@ -170,7 +175,10 @@ function action(room, player, action, body = {}) {
     if (room.phase !== 'lobby') return fail(409, 'The lobby is already closed.');
     player.ready = Boolean(body.ready); room.lastMessage = `${player.name} is ${player.ready ? 'ready' : 'not ready'}.`; touch(room); return success();
   }
-  if (['start', 'next', 'restart'].includes(action) && player.id !== room.hostId) return fail(403, 'Only the host can control the match.');
+  if (['start', 'next', 'restart', 'end'].includes(action) && player.id !== room.hostId) return fail(403, 'Only the host can control the match.');
+  if (action === 'end') {
+    room.phase = 'ended'; room.turnDeadline = null; room.lastMessage = 'The host ended this match.'; touch(room); return success();
+  }
   if (action === 'start') {
     if (room.phase !== 'lobby') return fail(409, 'The match has already started.');
     const count = room.players.filter(p => !p.isBot).length, mode = MODES[room.mode];

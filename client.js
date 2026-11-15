@@ -12,6 +12,7 @@ let localDeadline = 0;
 let selectedLetter = 0;
 let requestBusy = false;
 let previousScreen = 'home';
+let menuReturnScreen = 'home';
 let selectedMode = 'classic';
 let joinOrigin = globalThis.WordShiftOnline?.enabled ? new URL('.', location.href).href : location.origin;
 let joinQrLink = '';
@@ -171,6 +172,7 @@ function updateState(next) {
   }
   if (next.phase === 'roundResults') { renderResults(); show('results'); }
   if (next.phase === 'complete') { renderVictory(); show('victory'); }
+  if (next.phase === 'ended') show('ended');
   previousPhase = next.phase;
 }
 
@@ -292,6 +294,8 @@ function renderGame() {
   document.getElementById('tiles').innerHTML = letterTiles(state.current, state.target);
   document.getElementById('ladder').innerHTML = state.history.map((word, i) => `<span class="ladder-chip ${i === state.history.length - 1 ? 'current-chip' : ''}">${word.toUpperCase()}</span>`).join('');
   document.getElementById('players').innerHTML = state.players.map((player, i) => `<div class="player-card ${player.id === state.activePlayerId ? 'active-player' : ''} ${player.team ? `team-${player.team}` : ''}"><span class="miniavatar">${player.avatar}</span><span><b>${escapeHtml(player.name)}</b><small>${player.score} PTS${player.team ? ` · ${player.team.toUpperCase()}` : ''}${player.connected === false ? ' · OFFLINE' : ''}</small></span></div>`).join('');
+  const counts = state.moveCounts || {};
+  document.getElementById('tvMoves').textContent = `${state.totalMoves || 0} moves this round · You: ${counts[state.you?.id] || 0}`;
   paintClock();
 }
 
@@ -309,6 +313,8 @@ function paintClock() {
 function renderPhone() {
   if (!state || state.phase !== 'playing') return;
   const mine = state.you?.isActive;
+  document.getElementById('answer').maxLength = state.current.length;
+  document.getElementById('phoneMoves').textContent = `Your moves: ${state.moveCounts?.[state.you?.id] || 0} · Round total: ${state.totalMoves || 0}`;
   document.getElementById('phoneTurn').style.display = mine ? 'flex' : 'none';
   document.getElementById('phoneWait').style.display = mine ? 'none' : 'flex';
   if (mine) {
@@ -407,7 +413,7 @@ if (joinFromUrl && (!hasSavedSession || room !== joinFromUrl.toUpperCase())) {
   requestJson(`/api/rooms/${encodeURIComponent(room)}?token=${encodeURIComponent(token)}`).then(next => {
     if (room !== restoringRoom || token !== restoringToken) return;
     attachRoom(next);
-    show(next.phase === 'playing' ? (next.you.isHost ? 'tv' : 'phone') : next.phase === 'roundResults' ? 'results' : next.phase === 'complete' ? 'victory' : 'lobby');
+    show(next.phase === 'playing' ? (next.you.isHost ? 'tv' : 'phone') : next.phase === 'roundResults' ? 'results' : next.phase === 'complete' ? 'victory' : next.phase === 'ended' ? 'ended' : 'lobby');
   }).catch(err => {
     if (room !== restoringRoom || token !== restoringToken) return;
     if (err.status === 404) forgetExpiredRoom('Your previous room is no longer available. Create or join a new room.');
@@ -429,3 +435,40 @@ window.typeKey = typeKey;
 window.submitWord = submitWord;
 window.nextRound = nextRound;
 window.playAgain = playAgain;
+
+function openMatchMenu() {
+  menuReturnScreen = screens.find(screen=>screen.classList.contains('active'))?.id || 'home';
+  document.getElementById('endMatchButton').disabled = !state?.you?.isHost || state.phase === 'ended';
+  document.getElementById('menuMessage').textContent = '';
+  show('matchMenu');
+}
+function resumeMatch() {
+  if(state?.phase==='ended')return show('ended');
+  if(state?.phase==='complete')return show('victory');
+  if(state?.phase==='roundResults')return show('results');
+  show(menuReturnScreen==='matchMenu'?'home':menuReturnScreen);
+}
+function backFromHelp(){show(state?'matchMenu':'home');}
+async function endMatch() {
+  if(!state?.you?.isHost || requestBusy)return false;
+  requestBusy=true;
+  try {
+    const next=await requestJson(`/api/rooms/${room}/end`,{method:'POST',body:JSON.stringify({version:state.version})});
+    updateState(next);return true;
+  } catch(error) {show('matchMenu');document.getElementById('menuMessage').textContent=error.message;return false;}
+  finally {requestBusy=false;}
+}
+async function returnToStart() {
+  // A host leaving stops the shared match; a guest only leaves their local view.
+  if(requestBusy)return;
+  if(state?.you?.isHost && state.phase!=='ended' && !await endMatch())return;
+  if(stream)stream.close();stream=null;
+  localStorage.removeItem(storageKey);
+  room=token=state=null;previousPhase=null;localDeadline=0;
+  document.getElementById('roomSetup').style.display='grid';
+  document.getElementById('lobbyLayout').style.display='none';
+  setConnectionNotice('');setRoomError('');
+  history.replaceState(null,'',location.pathname+(new URLSearchParams(location.search).get('tv')==='1'?'?tv=1':''));
+  show('home');
+}
+Object.assign(window,{openMatchMenu,resumeMatch,backFromHelp,endMatch,returnToStart});

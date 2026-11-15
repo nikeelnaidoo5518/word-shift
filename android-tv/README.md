@@ -1,8 +1,8 @@
-# WORD SHIFT for Android TV — 0.5.0 preview
+# WORD SHIFT for Android TV — 0.6.0 preview
 
 [Download APK](../downloads/word-shift-tv-preview.apk). This is a sideloadable preview for Android TV/Google TV and Android-based Fire TV, not a store release.
 
-The app now opens https://nikeelnaidoo5518.github.io/word-shift/ automatically. There is no server-address form or separate computer setup. **The GitHub Pages deployment must be enabled and verified first.** Internet is required.
+The app now opens https://nikeelnaidoo5518.github.io/word-shift/ automatically. There is no server-address form or separate computer setup. The GitHub Pages game is live. Internet is required.
 
 ## Install and play
 
@@ -14,7 +14,7 @@ The app now opens https://nikeelnaidoo5518.github.io/word-shift/ automatically. 
 
 The TV host takes one player slot. Phone view and the on-screen keyboard let the host play with the remote. A separate spectator role is not implemented.
 
-Arrows move focus; OK selects; Back/Menu opens Resume, Reload/reconnect and Exit. The native loading screen offers retry when the game cannot load. Same-browser room recovery is supported; clearing app data loses anonymous host identity.
+Arrows move focus; OK selects; Back/Menu opens Resume, Game menu, Reload/reconnect and Exit. Game menu includes End game, Return to start, Options and music controls. The native loading screen offers retry when the game cannot load. Same-browser room recovery is supported; clearing app data loses anonymous host identity.
 
 ## Verification and limits
 

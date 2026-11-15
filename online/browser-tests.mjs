@@ -32,6 +32,8 @@ try {
     await page.waitForFunction(word=>state.current===word,word);
   }
   for(const page of [host,phone])await page.locator('#results.active').waitFor();
+  assert.equal(await host.evaluate(()=>state.totalMoves),3);
+  assert.equal(await phone.evaluate(()=>state.moveCounts[state.you.id]),1);
   const oldVersion=await host.evaluate(()=>state.version);
   await host.reload();await host.locator('#results.active').waitFor();
   assert.equal(await host.evaluate(()=>state.version),oldVersion,'Host checkpoint survives reload');
@@ -51,6 +53,20 @@ try {
   await phoneContext.setOffline(false);
   await phone.waitForFunction(()=>stream?.readyState===1 && document.getElementById('connectionNotice').hidden);
   assert.equal(await phone.evaluate(()=>state.you.id),uid);
+  await phone.evaluate(()=>openMatchMenu());
+  assert.equal(await phone.locator('#endMatchButton').isDisabled(),true);
+  await host.evaluate(()=>show('tv'));await host.locator('#tv [aria-label="Open menu"]').click();
+  await host.locator('[data-music-toggle]').click();
+  assert.equal(await host.evaluate(()=>WordShiftMusic.enabled),false);
+  await host.locator('[data-music-toggle]').click();
+  await host.waitForFunction(()=>WordShiftMusic.playing);
+  await host.getByRole('button',{name:'End game for everyone',exact:true}).click();
+  for(const page of [host,phone])await page.locator('#ended.active').waitFor();
+  assert.equal(await phone.evaluate(()=>state.phase),'ended');
+  await host.locator('#ended button').click();
+  await host.locator('#home.active').waitFor();
+  assert.equal(await host.evaluate(()=>localStorage.getItem('wordshift.room.session')),null);
+  await host.reload();await host.locator('#home.active').waitFor();
   await host.evaluate(code=>WordShiftOnline.closeOwnedRoom(code),code);
   assert.deepEqual(errors,[]);
   console.log('PASS: real Firebase TV + separate phone sessions, subpath QR, moves/results, host checkpoint restoration, phone reconnection, invalid/stale turns, and a real database WebSocket reconnect.');

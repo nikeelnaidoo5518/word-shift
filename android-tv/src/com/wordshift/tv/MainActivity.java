@@ -80,7 +80,7 @@ public final class MainActivity extends Activity {
         return super.dispatchKeyEvent(event);
     }
     @Override public void onBackPressed(){showMenu();}
-    private void showMenu(){new AlertDialog.Builder(this).setTitle("WORD SHIFT TV").setItems(new String[]{"Resume game","Reload / reconnect","Exit app"},(dialog,which)->{if(which==1)openGame();if(which==2)finish();}).show();}
+    private void showMenu(){new AlertDialog.Builder(this).setTitle("WORD SHIFT TV").setItems(new String[]{"Resume game","Game menu","Reload / reconnect","Exit app"},(dialog,which)->{if(which==1)web.evaluateJavascript("if(window.openMatchMenu)openMatchMenu();",null);if(which==2)openGame();if(which==3)finish();}).show();}
     private void disposeWebView(){WebView old=web;web=null;if(old!=null){old.stopLoading();if(old.getParent() instanceof android.view.ViewGroup)((android.view.ViewGroup)old.getParent()).removeView(old);old.destroy();}}
     @Override protected void onDestroy(){disposeWebView();super.onDestroy();}
 }

@@ -204,7 +204,7 @@ async function request(url,options={}) {
         } catch(error) {if(attempt===7)throw error;}
       }
     }
-    const match=p.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{5})(?:\/(join|ready|start|move|next|restart))?$/);
+    const match=p.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{5})(?:\/(join|ready|start|move|next|restart|end))?$/);
     if(!match)return json(404,{error:'Not found.'});
     const code=match[1],action=match[2],meta=await metadata(code);
     if(!action) {
