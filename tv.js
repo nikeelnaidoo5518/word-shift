@@ -6,8 +6,8 @@ if (new URLSearchParams(location.search).get('tv') === '1') {
   const style = document.createElement('style');
   style.textContent = `
     .tv-mode :focus { outline: 4px solid #35cdba !important; outline-offset: 4px; }
-    .tv-mode .screen { padding: 4vh 4vw; }
-    .tv-mode .game-screen { padding: 4vh 4vw; }
+    .tv-mode .screen { padding: var(--tv-inset-y,4vh) var(--tv-inset-x,4vw); }
+    .tv-mode .game-screen { padding: var(--tv-inset-y,4vh) var(--tv-inset-x,4vw); }
     .tv-mode .lobby-aside .aside-details { font-size: 13px; }
     .tv-mode .topbar, .tv-mode .game-top { flex-shrink: 0; }
     .tv-mode .demo-label { display: none; }
@@ -26,7 +26,7 @@ if (new URLSearchParams(location.search).get('tv') === '1') {
   document.head.appendChild(style);
 
   function controls() {
-    return [...document.querySelectorAll('.screen.active button, .screen.active input, .screen.active select')]
+    return [...document.querySelectorAll('.screen.active button, .screen.active input, .screen.active select, .screen.active [tabindex="0"], .connection-notice:not([hidden]) button')]
       .filter(el => !el.disabled && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden');
   }
   function focusDefault() {
@@ -36,6 +36,7 @@ if (new URLSearchParams(location.search).get('tv') === '1') {
     if (preferred) preferred.focus();
   }
   window.wordShiftRemote = function(key) {
+    globalThis.WordShiftMusic?.unlock();
     const items = controls();
     if (!items.length) return '';
     if (!items.includes(document.activeElement)) focusDefault();
@@ -55,6 +56,7 @@ if (new URLSearchParams(location.search).get('tv') === '1') {
       current.dispatchEvent(new Event('change', { bubbles: true }));
       return '';
     }
+    if(['ArrowUp','ArrowDown'].includes(key) && current.scrollHeight>current.clientHeight+1){const before=current.scrollTop;current.scrollTop+=(key==='ArrowDown'?1:-1)*current.clientHeight*.65;if(current.scrollTop!==before)return '';}
     const from = current.getBoundingClientRect();
     const horizontal = key === 'ArrowLeft' || key === 'ArrowRight';
     const sign = key === 'ArrowRight' || key === 'ArrowDown' ? 1 : -1;

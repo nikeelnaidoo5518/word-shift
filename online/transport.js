@@ -11,7 +11,7 @@ const failure = (status, error) => ({status,body:{error}});
 const tabId = sessionStorage.getItem('wordshift.online.tab') || id();
 sessionStorage.setItem('wordshift.online.tab',tabId);
 let app, auth, db, engine, rules, bootPromise, offset = 0, connected = false, host = null;
-let queue = Promise.resolve(), hostGeneration = 0;
+let queue = Promise.resolve(), hostGeneration = 0, hostStart=null;
 // Keep the five-character WORD SHIFT UI; the database uses a W-prefixed six-character key.
 // These records use the existing SA Trivia transport schema, without editing its rules.
 const path = code => `rooms/W${code}`;
@@ -66,7 +66,7 @@ async function metadata(code) {
 }
 function checkpoint(room, ledger={}) {return {owner:tabId,room:wireRoom(room),ledger};}
 function publicRoom(room) {
-  return JSON.parse(JSON.stringify({...rules.publicState(room,null),game:'word-shift',turnDeadline:room.turnDeadline || null,expiresAt:room.lastActivityAt+TTL}));
+  return JSON.parse(JSON.stringify({...rules.publicState(room,null),game:'word-shift',turnDeadline:room.turnDeadline || null,expiresAt:room.lastActivityAt+TTL,hostSeenAt:now()}));
 }
 async function claim(code) {
   const result=await runTransaction(ref(db,privatePath(code)+'/controller'),current=>{
@@ -76,6 +76,12 @@ async function claim(code) {
   if (!result.committed) throw Error('This room is already open in another TV tab. Use that tab, or close it and wait 15 seconds before reloading.');
 }
 async function startHost(code) {
+  if(host?.code===code)return;
+  if(hostStart?.code===code)return hostStart.promise;
+  const pending={code};hostStart=pending;pending.promise=restoreHost(code);
+  try{return await pending.promise;}finally{if(hostStart===pending)hostStart=null;}
+}
+async function restoreHost(code) {
   if (host?.code===code) return;
   stopHost();const generation=hostGeneration;await claim(code);
   if(generation!==hostGeneration)throw Error('Room connection was replaced.');
@@ -123,7 +129,7 @@ async function startHost(code) {
     if(host!==controller || !connected)return;
     try {
       const result=await runTransaction(ref(db,privatePath(code)+'/controller'),current=>current?.id===tabId?{id:tabId,heartbeatAt:now()}:undefined,{applyLocally:false});
-      if(!result.committed)stopHost();
+      if(!result.committed)stopHost();else await update(ref(db,path(code)+'/state'),{hostSeenAt:now()});
     } catch { /* Firebase will reconnect; no host writes run while offline. */ }
   },5000);
   await publish();
@@ -153,6 +159,10 @@ async function joinMember(controller,uid,profile) {
   if(host!==controller)return;
   const room=controller.room, requestId=profile.requestId;
   if(remembered(controller,uid,requestId))return;
+  if(room.departed?.[uid]) {
+    if(room.departed[uid]==='left' && room.phase==='lobby' && room.joinRequests?.[uid]!==requestId) {delete room.departed[uid];room.archivedPlayers=(room.archivedPlayers || []).filter(p=>p.id!==uid);}
+    else {await respond(controller,uid,requestId,failure(409,'You left or were removed from this game. Join a new game.'));return;}
+  }
   const existing=room.players.find(player=>player.id===uid) || (room.display?.id===uid ? room.display : null);
   if(existing) {await respond(controller,uid,requestId,{status:200,body:{}});return;}
   const mode=globalThis.WordShiftRules.MODES[room.mode];
@@ -163,6 +173,7 @@ async function joinMember(controller,uid,profile) {
   else if(!name)error='Enter a nickname first.';
   else if(room.players.some(player=>player.name.toLowerCase()===name.toLowerCase()))error='That nickname is already in this room.';
   if(error) {await respond(controller,uid,requestId,failure(409,error));return;}
+  room.joinRequests ||= {};room.joinRequests[uid]=requestId;
   room.players.splice(room.players.filter(p=>!p.isBot).length,0,{id:uid,name,avatar:avatars.has(profile.avatar)?profile.avatar:'🐸',score:0,ready:false,roundWins:0,team:room.mode==='teams'?(room.players.length%2?'red':'blue'):null});
   room.lastActivityAt=now();room.lastMessage=`${name} joined the room.`;rules.touch(room);
   await respond(controller,uid,requestId,{status:201,body:{}});
@@ -195,7 +206,7 @@ async function request(url,options={}) {
       stopHost();const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       for(let attempt=0;attempt<8;attempt++) {
         const code=Array.from(crypto.getRandomValues(new Uint8Array(5)),n=>alphabet[n%alphabet.length]).join('');
-        const room=rules.makeRoom({code,mode:body.mode,hostId:uid,displayOnly:body.displayOnly===true,name:cleanName(body.name)||'Host',avatar:avatars.has(body.avatar)?body.avatar:'🦊',difficulty:Object.hasOwn(engine.BOT_DELAY_MS,body.botDifficulty)?body.botDifficulty:'Quick Thinker'});
+        const room=rules.makeRoom({code,mode:body.mode,hostId:uid,puzzlePack:body.puzzlePack,puzzleSeed:crypto.getRandomValues(new Uint32Array(1))[0],displayOnly:body.displayOnly===true,name:cleanName(body.name)||'Host',avatar:avatars.has(body.avatar)?body.avatar:'🦊',difficulty:Object.hasOwn(engine.BOT_DELAY_MS,body.botDifficulty)?body.botDifficulty:'Quick Thinker'});
         try {
           if((await get(ref(db,path(code)+'/host'))).exists())continue;
           await set(ref(db,path(code)),{host:uid,createdAt:now(),expiresAt:now()+TTL,state:publicRoom(room),members:{[uid]:profileWire({name:room.display?.name || room.players[0].name,avatar:room.display?.avatar || room.players[0].avatar},'host')},inputs:{[uid]:{id:'host',type:'word-shift/checkpoint',value:{checkpoint:checkpoint(room),controller:{id:tabId,heartbeatAt:now()}}}}});
@@ -204,7 +215,7 @@ async function request(url,options={}) {
         } catch(error) {if(attempt===7)throw error;}
       }
     }
-    const match=p.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{5})(?:\/(join|ready|start|move|next|restart|end))?$/);
+    const match=p.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{5})(?:\/(join|ready|start|move|next|restart|end|pause|resume|leave|remove|captain))?$/);
     if(!match)return json(404,{error:'Not found.'});
     const code=match[1],action=match[2],meta=await metadata(code);
     if(!action) {
@@ -222,7 +233,7 @@ async function request(url,options={}) {
       if(result.status>=400)return json(result.status,{error:result.error});
       return json(result.status,{state:view((await get(ref(db,path(code)+'/state'))).val()),token:uid});
     }
-    const input={id:id(),action,version:body.version ?? -1,...(action==='move'?{word:String(body.word || '').slice(0,8)}:{}),...(action==='ready'?{ready:Boolean(body.ready)}:{})};
+    const input={id:id(),action,version:body.version ?? -1,...(action==='move'?{word:String(body.word || '').slice(0,8)}:{}),...(action==='ready'?{ready:Boolean(body.ready)}:{}),...(['remove','captain'].includes(action)?{playerId:String(body.playerId || '').slice(0,128)}:{})};
     let result;
     if(meta.host===uid) {
       if(!host || host.code!==code)await startHost(code);
@@ -235,7 +246,7 @@ async function request(url,options={}) {
   } catch(error) {return json(error.status || 503,{error:friendly(error)});}
 }
 function events(code) {
-  const source=new EventTarget();source.readyState=0;let closed=false,currentExpiry=0;const cleanups=[];
+  const source=new EventTarget();source.readyState=0;let closed=false,currentExpiry=0,hostSeenAt=now();const cleanups=[];
   source.close=()=>{if(closed)return;closed=true;source.readyState=2;cleanups.forEach(cleanup=>cleanup());if(host?.code===code)stopHost();};
   const emit=(name,data)=>{if(!closed)source.dispatchEvent(new MessageEvent(name,{data:JSON.stringify(data)}));};
   const fail=error=>{if(closed)return;source.readyState=2;source.onerror?.(error);};
@@ -258,9 +269,11 @@ function events(code) {
     cleanups.push(onValue(ref(db,path(code)+'/state'),snap=>{
       if(closed)return;
       if(!snap.exists()){emit('expired',{message:'This room is no longer available. Create a new room.'});source.close();return;}
-      currentExpiry=snap.val().expiresAt;
+      currentExpiry=snap.val().expiresAt;hostSeenAt=snap.val().hostSeenAt || now();
       if(connected){source.readyState=1;emit('state',view(snap.val()));}
     },error=>{if(currentExpiry<=now())emit('expired',{message:'This room expired. Create a new room.'});else fail(error);}));
+    if(closed){cleanups.forEach(cleanup=>cleanup());return;}
+    const monitor=setInterval(()=>{if(!closed && connected && meta.host!==uid && now()-hostSeenAt>20000)emit('hostaway',{message:'TV disconnected. Keep the TV app open; your seat and score are saved.'});},2000);cleanups.push(()=>clearInterval(monitor));
   })().catch(error=>{if(error.status===404)emit('expired',{message:error.message});else fail(error);});
   return source;
 }

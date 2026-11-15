@@ -15,7 +15,8 @@ function logMove(room, move) {
 function activePlayer(room) { return room.players[room.activeIndex] || null; }
 function publicState(room, player) {
   const active = activePlayer(room);
-  const countdown = room.turnDeadline ? Math.max(0, Math.ceil((room.turnDeadline - now()) / 1000)) : 0;
+  if (player && !room.players.some(p=>p.id===player.id) && player.id!==room.display?.id) player=null;
+  const countdown = room.phase==='paused' ? Math.ceil((room.pausedRemainingMs || 0)/1000) : room.turnDeadline ? Math.max(0, Math.ceil((room.turnDeadline - now()) / 1000)) : 0;
   return {
     code: room.code,
     mode: room.mode,
@@ -25,7 +26,9 @@ function publicState(room, player) {
     phase: room.phase,
     hostId: room.hostId,
     displayOnly: Boolean(room.display),
-    captainId: room.display ? room.players.find(p => !p.isBot)?.id || null : room.hostId,
+    captainId: captainId(room),
+    puzzlePack: room.puzzlePack || 'original',
+    summary: [...room.players,...(room.archivedPlayers || [])].map(p=>({id:p.id,name:p.name,avatar:p.avatar,score:p.score,removed:Boolean(p.removed),...(room.stats?.[p.id] || {valid:0,invalid:0,timeouts:0,longestStreak:0,roundWins:0})})),
     round: room.round,
     rounds: room.rounds,
     roundName: room.puzzle?.roundName || null,
@@ -53,14 +56,16 @@ function publicState(room, player) {
     resets: room.resets,
     version: room.version,
     you: player ? { id: player.id, name: player.name, avatar: player.avatar, isHost: player.id === room.hostId, isDisplay: Boolean(player.isDisplay), canControl: canControl(room, player), isActive: player.id === active?.id, ready: player.ready } : null,
-    players: room.players.map(({ id, name, avatar, score, ready, roundWins, isBot }) => ({ id, name, avatar, score, ready, roundWins, isBot: Boolean(isBot), connected: Boolean(isBot) || isConnected(room, id), team: room.mode === 'teams' ? (room.players.findIndex(p => p.id === id) % 2 ? 'red' : 'blue') : null })),
+    players: room.players.map(({ id, name, avatar, score, ready, roundWins, isBot }) => ({ id, name, avatar, score, ready, roundWins, isBot: Boolean(isBot), connected: Boolean(isBot) || isConnected(room, id), team: room.mode === 'teams' ? room.players.find(p=>p.id===id).team : null })),
   };
 }
-function canControl(room, player) { return Boolean(player && (player.id === room.hostId || (room.display && player.id === room.players.find(p => !p.isBot)?.id))); }
+function captainId(room) { return room.display ? room.captainId || room.players.find(p=>!p.isBot)?.id || null : room.hostId; }
+function stat(room,player) {room.stats ||= {};return room.stats[player.id] ||= {valid:0,invalid:0,timeouts:0,streak:0,longestStreak:0,roundWins:0};}
+function canControl(room, player) { return Boolean(player && (player.id === room.hostId || (room.display && player.id === captainId(room)))); }
 function touch(room) { room.updatedAt = now(); room.version++; onChange(room); }
 function resetTurn(room) { room.activeIndex = (room.activeIndex + 1) % room.players.length; room.turnDeadline = now() + room.puzzle.timerSeconds * 1000; }
 function startRound(room) {
-  room.puzzle = engine.puzzleForRound(room.round - 1);
+  room.puzzle = engine.puzzleForRound(room.round - 1, room.puzzlePack || 'original', room.puzzleSeed || 0);
   if (room.mode === 'party') {
     room.puzzle.roundName = room.puzzle.modifier;
     room.puzzle.timerSeconds = [15, 25, 25, 15, 15, 20, 15][room.round - 1];
@@ -86,6 +91,7 @@ function endRound(room, winnerId = null, unresolved = false) {
   room.unresolved = unresolved;
   if (winnerId) {
     const winner = room.players.find(player => player.id === winnerId);
+    if(winner)stat(room,winner).roundWins++;
     if (['headToHead', 'computer'].includes(room.mode) && winner) winner.roundWins++;
     if (room.mode === 'teams' && winner) room.teamWins[winner.team]++;
   }
@@ -125,12 +131,14 @@ function nextRound(room) {
 function applyTimeout(room) {
   if (room.phase !== 'playing') return;
   const player = activePlayer(room);
+  const stats=stat(room,player);stats.timeouts++;stats.streak=0;
   logMove(room, { playerId: player.id, playerName: player.name, word: null, valid: false, reason: 'TIME’S UP!', at: now() });
   room.lastMessage = `TIME’S UP! ${player.name} loses the turn.`;
   resetTurn(room);
   touch(room);
 }
 function acceptMove(room, player, word) {
+  const stats=stat(room,player);stats.valid++;stats.streak++;stats.longestStreak=Math.max(stats.longestStreak,stats.streak);
   room.moveCounts ||= {};
   room.moveCounts[player.id] = (room.moveCounts[player.id] || 0) + 1;
   const previous = room.current;
@@ -173,13 +181,41 @@ function acceptMove(room, player, word) {
 function action(room, player, action, body = {}) {
   const fail = (status, error) => ({ status, body: { error, state: publicState(room, player) } });
   const success = () => ({ status: 200, body: publicState(room, player) });
-  if (action !== 'end' && (action === 'move' || body.version !== undefined) && body.version !== room.version) return fail(409, 'The game changed. Your screen has been updated; try again.');
+  if (!['end','pause','resume','leave'].includes(action) && (action === 'move' || body.version !== undefined) && body.version !== room.version) return fail(409, 'The game changed. Your screen has been updated; try again.');
   if (action === 'ready') {
     if (player.isDisplay) return fail(403, 'The TV is a display, not a player.');
     if (room.phase !== 'lobby') return fail(409, 'The lobby is already closed.');
     player.ready = Boolean(body.ready); room.lastMessage = `${player.name} is ${player.ready ? 'ready' : 'not ready'}.`; touch(room); return success();
   }
-  if (['start', 'next', 'restart', 'end'].includes(action) && !canControl(room, player)) return fail(403, 'Only the TV or phone captain can control the match.');
+  if (['start', 'next', 'restart', 'end', 'pause', 'resume', 'remove', 'captain'].includes(action) && !canControl(room, player)) return fail(403, 'Only the TV or phone captain can control the match.');
+  if(action==='pause') {
+    if(room.phase!=='playing')return fail(409,'Only a running round can be paused.');
+    if(now()>=room.turnDeadline)applyTimeout(room);
+    room.pausedRemainingMs=Math.max(1,room.turnDeadline-now());room.turnDeadline=null;room.phase='paused';room.lastMessage='Game paused. Everyone can take a break.';touch(room);return success();
+  }
+  if(action==='resume') {
+    if(room.phase!=='paused')return fail(409,'This game is not paused.');
+    room.turnDeadline=now()+room.pausedRemainingMs;room.phase='playing';room.lastMessage='Game resumed.';touch(room);return success();
+  }
+  if(action==='captain') {
+    const target=room.players.find(p=>p.id===body.playerId && !p.isBot);
+    if(!room.display || !target || !isConnected(room,target.id))return fail(409,'Choose a connected phone player.');
+    room.captainId=target.id;room.lastMessage=`${target.name} is now phone captain.`;touch(room);return success();
+  }
+  if(action==='leave' || action==='remove') {
+    const target=action==='leave'?player:room.players.find(p=>p.id===body.playerId);
+    if(!target || target.isDisplay || target.isBot || target.id===room.hostId)return fail(409,'The TV or playing host must end the game instead.');
+    if(action==='remove' && (!['lobby','paused'].includes(room.phase) || isConnected(room,target.id)))return fail(409,'Pause first, and choose a disconnected player.');
+    const index=room.players.findIndex(p=>p.id===target.id),wasActive=index===room.activeIndex;
+    room.departed ||= {};room.departed[target.id]=action==='leave'?'left':'removed';
+    room.archivedPlayers ||= [];room.archivedPlayers=room.archivedPlayers.filter(p=>p.id!==target.id);room.archivedPlayers.push({...target,removed:true});room.archivedPlayers=room.archivedPlayers.slice(-16);
+    room.players.splice(index,1);
+    if(room.captainId===target.id)room.captainId=null;
+    if(room.phase==='lobby') {if(room.mode==='teams')room.players.forEach((p,i)=>{p.team=i%2?'red':'blue';});}
+    else if(!['complete','ended'].includes(room.phase) && room.players.filter(p=>!p.isBot).length<MODES[room.mode].min) {room.phase='ended';room.turnDeadline=null;}
+    else if(room.players.length) {room.activeIndex=(room.activeIndex-(index<room.activeIndex?1:0))%room.players.length;if(wasActive && room.phase==='playing')room.turnDeadline=now()+room.puzzle.timerSeconds*1000;if(wasActive && room.phase==='paused')room.pausedRemainingMs=room.puzzle.timerSeconds*1000;}
+    room.lastMessage=room.phase==='ended'?'Match ended: too few players remain.':`${target.name} left the game.`;touch(room);return success();
+  }
   if (action === 'end') {
     room.phase = 'ended'; room.turnDeadline = null; room.lastMessage = 'The host ended this match.'; touch(room); return success();
   }
@@ -188,7 +224,7 @@ function action(room, player, action, body = {}) {
     const count = room.players.filter(p => !p.isBot).length, mode = MODES[room.mode];
     if (count < mode.min || count > mode.max) return fail(409, `This mode needs ${mode.min}${mode.min === mode.max ? '' : `–${mode.max}`} human players.`);
     if (!room.players.every(p => p.ready)) return fail(409, 'Everyone must be ready before the match starts.');
-    room.round = 1; room.players.forEach(p => { p.score = 0; p.roundWins = 0; }); room.teamWins = { blue: 0, red: 0 }; startRound(room); return success();
+    room.stats={};room.archivedPlayers=[];room.round = 1; room.players.forEach(p => { p.score = 0; p.roundWins = 0; }); room.teamWins = { blue: 0, red: 0 }; startRound(room); return success();
   }
   if (action === 'move') {
     if (room.phase !== 'playing') return fail(409, 'This round is not accepting moves.');
@@ -201,6 +237,7 @@ function action(room, player, action, body = {}) {
     else if (!engine.dictionary.has(word)) reason = 'Word not recognized!';
     else if (room.used.has(word)) reason = 'That word has already been used!';
     if (reason) {
+      const stats=stat(room,player);stats.invalid++;stats.streak=0;
       logMove(room, { playerId: player.id, playerName: player.name, word, valid: false, reason, at: now() });
       room.lastMessage = reason; resetTurn(room); touch(room); return fail(422, reason);
     }
@@ -209,16 +246,16 @@ function action(room, player, action, body = {}) {
   if (action === 'next') { if (!nextRound(room)) return fail(409, 'There is no next round.'); return success(); }
   if (action === 'restart') {
     if (room.phase !== 'complete') return fail(409, 'Finish the current match first.');
-    room.players.forEach(p => { p.score = 0; p.roundWins = 0; }); room.teamWins = { blue: 0, red: 0 };
+    room.stats={};room.archivedPlayers=[];room.players.forEach(p => { p.score = 0; p.roundWins = 0; }); room.teamWins = { blue: 0, red: 0 };
     room.championIds = []; room.championId = null; room.championTeam = null; room.round = 1; startRound(room); return success();
   }
   return fail(404, 'Unknown game action.');
 }
-function makeRoom({code, mode = 'classic', hostId, name = 'Host', avatar = '🦊', difficulty = 'Quick Thinker', displayOnly = false}) {
+function makeRoom({code, mode = 'classic', hostId, name = 'Host', avatar = '🦊', difficulty = 'Quick Thinker', displayOnly = false, puzzlePack = 'original', puzzleSeed = 0}) {
   if (!Object.hasOwn(MODES, mode)) mode = 'classic';
   const players = displayOnly ? [] : [{ id: hostId, name, avatar, score: 0, ready: true, roundWins: 0, team: mode === 'teams' ? 'blue' : null }];
   if (mode === 'computer') players.push({id:'computer',name:difficulty,avatar:'🧠',score:0,ready:true,roundWins:0,isBot:true,difficulty});
-  return {code,mode,players,hostId,...(displayOnly ? {display:{id:hostId,name:'TV display',avatar:'📺',isDisplay:true}} : {}),phase:'lobby',round:0,rounds:MODES[mode].rounds,version:1,history:[],moves:[],used:new Set(),activeIndex:0,turnDeadline:null,createdAt:now(),updatedAt:now(),lastActivityAt:now(),lastMessage:'Room created. Scan the QR code to invite players.',puzzle:null,resets:0,unresolved:false,roundWinnerId:null,championId:null,championIds:[],championTeam:null,teamWins:{blue:0,red:0}};
+  return {code,mode,players,hostId,puzzlePack:Object.hasOwn(engine.PUZZLE_PACKS || {},puzzlePack)?puzzlePack:'original',puzzleSeed:Math.abs(Number(puzzleSeed)||0),...(displayOnly ? {display:{id:hostId,name:'TV display',avatar:'📺',isDisplay:true}} : {}),phase:'lobby',round:0,rounds:MODES[mode].rounds,version:1,history:[],moves:[],used:new Set(),activeIndex:0,turnDeadline:null,createdAt:now(),updatedAt:now(),lastActivityAt:now(),lastMessage:'Room created. Scan the QR code to invite players.',puzzle:null,resets:0,unresolved:false,roundWinnerId:null,championId:null,championIds:[],championTeam:null,teamWins:{blue:0,red:0}};
 }
 return {activePlayer, publicState, touch, startRound, endRound, nextRound, applyTimeout, acceptMove, resetTurn, logMove, action, makeRoom};
 }

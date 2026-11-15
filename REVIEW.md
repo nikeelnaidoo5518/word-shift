@@ -16,3 +16,9 @@ Remaining priorities:
 4. Family-reviewed/localized dictionary, larger puzzle set, full Party Chaos modifiers, original audio and store distribution.
 
 Online and Node modes differ in authority and persistence: online requires the TV host open and retains a Firebase checkpoint; Node has server authority and in-memory rooms. Neither provides finished persistent accounts.
+
+## 0.8 follow-up
+
+Added synchronized pause/resume, phone leave, disconnected-player removal while paused/in the lobby, connected-phone captain transfer, an explicit same-browser recovery button and TV heartbeat warnings. Removal preserves team assignments; an undersized match ends rather than silently changing its mode. Authorization and strict move-version/one-letter checks remain shared by Node and Firebase.
+
+New match stats persist independently of the bounded event log. Difficulty decks use saved seeds and dictionary-verified routes. Word previews restrict input to one changed position. Music/effects volumes and TV text/margins are local preferences. Automated browser coverage includes the populated manager/summary/paused screens and three phone viewport sizes. Actual TV hardware and additional browser engines still need testing.

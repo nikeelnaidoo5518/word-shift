@@ -8,6 +8,12 @@ on:
       - 'room-rules.js'
       - 'game-engine.js'
       - 'client.js'
+      - 'index.html'
+      - 'music.js'
+      - 'tv.js'
+      - 'scripts/*layout.cjs'
+      - 'firebase.emulator.json'
+      - 'package.json'
       - '.github/workflows/firebase.yml'
   workflow_dispatch:
 permissions:

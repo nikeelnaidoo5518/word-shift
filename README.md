@@ -48,3 +48,16 @@ The top Menu button offers Resume, End game (TV or phone captain), Return to sta
 The side counter shows successful shifts this round and your contribution; the phone also shows both counts. Invalid submissions do not count and still pass the turn. Counters reset each round. Created by **Nikeel Naidoo**.
 
 An original, softly synthesized classical-style waltz plays after a user interaction. Music can be muted in Menu or Options, remembers your choice, and pauses in hidden tabs. Phones default to muted to avoid several devices playing together. No third-party recording or audio service is used.
+
+## 0.8 party upgrades
+
+- **Players & captain:** open Menu → Players & captain. The TV/captain can hand control to a connected phone. Pause first to remove a disconnected player. Phones can choose Leave game here, or Return to start in the menu. Leaving releases the seat; an ordinary connection drop preserves it. If fewer than the mode's required players remain, the match ends safely. Team colours do not change during a running match.
+- **Pause:** Menu → Pause game freezes the turn and AI for everyone. Resume restores the remaining seconds, even after a TV reload. The room's normal two-hour inactivity expiry still applies.
+- **Reconnect:** the connection banner has a Reconnect button. Reloading/reconnecting in the same browser restores the same anonymous player identity, score and seat. A missing TV heartbeat shows a TV-disconnected message. Clearing browser/app data or using another device does not recover that identity.
+- **Puzzle packs:** choose Classic sequence, Beginner (3 letters), Intermediate (4), Expert (5), or Mixed before creating a game. There are 12 curated endpoint pairs per difficulty, plus the original sequence. A shuffled deck is saved with the room, avoids repeated pairs within a match, and survives reloads. Every pair has a verified dictionary route; the underlying word list is still not family-vetted.
+- **Phone preview:** tap one letter and then a replacement. The input shows the proposed word before SHIFT; it cannot combine several letter changes. Full-word keyboard edits must also differ by exactly one letter. Dictionary and unused-word checks still happen on submission, and each submission still passes the turn.
+- **Audio:** original synthesized cues mark valid moves, the target and the final five seconds. Music and effects have separate saved volume settings. Phone audio defaults to muted; sound begins only after interaction. No recordings or external audio calls are used.
+- **Summary:** Menu → Match summary shows valid moves, submission accuracy, best streak across your own turns, round wins and timeouts. Stats span the match and retain departed players' results. A new match resets them.
+- **TV options:** saved Normal/Larger text and 4–6% screen margins, selectable with the remote. Automated Chromium checks cover 17 scenes, four TV resolutions and three calibration combinations, plus three phone sizes and 3/4/5-letter controls. Physical TV installation, vendor WebView/overscan, Safari and Firefox testing remain outstanding.
+
+For focused emulator development checks, set `WORDSHIFT_TEST_FILE=online/upgrades-tests.mjs` before `npm run test:firebase`; CI runs the complete list by default. `node scripts/phone-layout.cjs` uses the same optional Playwright/BASE_URL variables as the TV checks.

@@ -21,6 +21,7 @@ let networkAddressPending = false;
 let networkAddressLoaded = false;
 let reconnecting = false;
 let reconnectProbe = false;
+let draftKey='', lastSoundKey='', warningKey='', summaryReturn='matchMenu', managerKey='';
 
 function show(id) {
   if (id === 'phone' && state?.you?.isDisplay) id = 'tv';
@@ -89,7 +90,7 @@ async function createRoom() {
   try {
     const name = document.getElementById('hostName').value.trim() || 'Host';
     const botDifficulty = document.getElementById('botDifficulty')?.value || 'Quick Thinker';
-    const result = await requestJson('/api/rooms', { method: 'POST', body: JSON.stringify({ name, avatar: '🦊', mode: selectedMode, botDifficulty, displayOnly: tvDisplay }) });
+    const result = await requestJson('/api/rooms', { method: 'POST', body: JSON.stringify({ name, avatar: '🦊', mode: selectedMode, botDifficulty, puzzlePack:document.getElementById('puzzlePack').value, displayOnly: tvDisplay }) });
     room = result.state.code;
     token = result.token;
     saveSession();
@@ -130,6 +131,7 @@ function attachRoom(initial) {
     try { message = JSON.parse(event.data).message || message; } catch { /* Use the default. */ }
     forgetExpiredRoom(message);
   });
+  source.addEventListener('hostaway',event=>{if(stream===source){try{setConnectionNotice(JSON.parse(event.data).message);}catch{}}});
   source.onerror = () => {
     if (stream !== source) return;
     setConnectionNotice(source.readyState === EventSource.CLOSED ? 'Connection unavailable. Close extra room tabs and reload to reconnect.' : 'Connection lost. Reconnecting…');
@@ -144,7 +146,8 @@ function attachRoom(initial) {
 function setConnectionNotice(message) {
   reconnecting = Boolean(message);
   const notice = document.getElementById('connectionNotice');
-  notice.textContent = message; notice.hidden = !message;
+  document.getElementById('connectionText').textContent = message; notice.hidden = !message;
+  updateDraftPreview();
 }
 function forgetExpiredRoom(message) {
   if (stream) stream.close(); stream = null;
@@ -157,8 +160,10 @@ function forgetExpiredRoom(message) {
 
 function updateState(next) {
   if (!next) return;
+  if(!next.you){forgetExpiredRoom('You left or were removed from this game. Create or join another game.');return;}
   if (state?.code === next.code && next.version < state.version) return;
   const oldPhase = state?.phase ?? previousPhase;
+  const auxiliary=['matchMenu','manage','summary','settings','how'].includes(document.querySelector('.screen.active')?.id);
   state = next;
   room = next.code;
   localDeadline = Date.now() + (Number(next.secondsLeft || 0) * 1000);
@@ -168,14 +173,18 @@ function updateState(next) {
     renderGame();
     renderPhone();
     if (oldPhase !== 'playing') {
-      if (next.you?.isDisplay) show('tv');
+      if(oldPhase==='paused') show(next.you?.isDisplay || next.you?.isHost?'tv':'phone');
+      else if (next.you?.isDisplay) show('tv');
       else if (next.you?.isHost) { updateIntro(); show('intro'); }
       else show('phone');
     }
   }
-  if (next.phase === 'roundResults') { renderResults(); show('results'); }
-  if (next.phase === 'complete') { renderVictory(); show('victory'); }
-  if (next.phase === 'ended') show('ended');
+  if (next.phase === 'roundResults') { renderResults(); if(oldPhase!==next.phase || !auxiliary)show('results'); }
+  if (next.phase === 'complete') { renderVictory(); if(oldPhase!==next.phase || !auxiliary)show('victory'); }
+  if (next.phase === 'paused') {document.getElementById('pauseInfo').textContent=`${next.activePlayerName}’s turn · ${next.secondsLeft} seconds saved. The TV or captain can resume.`;document.getElementById('resumeButton').disabled=!next.you.canControl;if(oldPhase!==next.phase || !auxiliary)show('paused');}
+  if (next.phase === 'ended') {document.getElementById('endedReason').textContent=next.lastMessage || 'Thanks for playing!';if(oldPhase!==next.phase || !auxiliary)show('ended');}
+  refreshExtraViews();
+  playStateSound(next);
   previousPhase = next.phase;
 }
 
@@ -306,6 +315,7 @@ function renderGame() {
 function paintClock() {
   if (!state || state.phase !== 'playing') return;
   const seconds = Math.max(0, Math.ceil((localDeadline - Date.now()) / 1000));
+  if(seconds>0 && seconds<=5){const key=`${state.code}:${state.round}:${state.version}`;if(warningKey!==key){warningKey=key;globalThis.WordShiftMusic?.effect('warning');}}
   document.getElementById('clock').textContent = seconds;
   document.getElementById('bigTimer').style.setProperty('--progress', `${(seconds / state.timerSeconds) * 100}%`);
   const phoneClock = document.getElementById('phoneClock');
@@ -317,12 +327,14 @@ function paintClock() {
 function renderPhone() {
   if (!state || state.phase !== 'playing' || state.you?.isDisplay) return;
   const mine = state.you?.isActive;
+  const key=`${state.code}:${state.round}:${state.current}:${state.activePlayerId}`;
+  if(draftKey!==key){draftKey=key;selectedLetter=0;document.getElementById('answer').value=state.current;}
   document.getElementById('answer').maxLength = state.current.length;
   document.getElementById('phoneMoves').textContent = `Your moves: ${state.moveCounts?.[state.you?.id] || 0} · Round total: ${state.totalMoves || 0}`;
   document.getElementById('phoneTurn').style.display = mine ? 'flex' : 'none';
   document.getElementById('phoneWait').style.display = mine ? 'none' : 'flex';
   if (mine) {
-    document.querySelector('#phoneTurn .row span:last-child').textContent = `${state.you.name} · ${state.you.avatar}`;
+    document.getElementById('phonePlayerName').textContent = `${state.you.name} · ${state.you.avatar}`;
     document.getElementById('phoneWord').textContent = state.current.toUpperCase();
     document.querySelector('#phoneTurn .phone-target b').textContent = state.target.toUpperCase();
     document.getElementById('letterPick').innerHTML = [...state.current].map((letter, i) => `<button class="${i === selectedLetter ? 'selected' : ''}" aria-label="Select letter ${i + 1}, ${letter.toUpperCase()}" onclick="selectLetter(${i})">${letter.toUpperCase()}</button>`).join('');
@@ -333,6 +345,7 @@ function renderPhone() {
     document.getElementById('waitWord').textContent = state.current.toUpperCase();
     document.querySelector('#phoneWait p').textContent = state.lastMessage || 'Watch the shared ladder on the main screen.';
   }
+  updateDraftPreview();
   paintClock();
 }
 
@@ -341,6 +354,7 @@ function typeKey(letter) {
   if (!state?.you?.isActive) return;
   const input = document.getElementById('answer');
   input.value = `${state.current.slice(0, selectedLetter)}${letter.toLowerCase()}${state.current.slice(selectedLetter + 1)}`;
+  updateDraftPreview();
 }
 
 async function submitWord() {
@@ -390,10 +404,11 @@ function renderResults() {
 }
 
 function renderVictory() {
-  const champion = state.players.find(player => player.id === state.championId);
-  const champions = (state.championIds || [state.championId]).map(id => state.players.find(player => player.id === id)?.name).filter(Boolean);
+  const summary=state.summary?.length?state.summary:state.players;
+  const champion = summary.find(player => player.id === state.championId);
+  const champions = (state.championIds || [state.championId]).map(id => summary.find(player => player.id === id)?.name).filter(Boolean);
   document.getElementById('championName').textContent = state.championTeam === 'both' ? 'Both Teams' : state.championTeam ? `${state.championTeam.toUpperCase()} TEAM` : champions.length ? champions.join(' & ') : champion?.name || 'Champion';
-  document.getElementById('finalScores').innerHTML = [...state.players].sort((a, b) => b.score - a.score).map((player, i) => `<div class="score-row"><span>${['🥇', '🥈', '🥉', '✦'][i]} ${escapeHtml(player.name)}</span><b ${i === 0 ? 'style="color:var(--gold)"' : ''}>${player.score} pts</b></div>`).join('');
+  document.getElementById('finalScores').innerHTML = [...summary].sort((a, b) => b.score - a.score).map((player, i) => `<div class="score-row"><span>${['🥇', '🥈', '🥉', '✦'][i]} ${escapeHtml(player.name)}</span><b ${i === 0 ? 'style="color:var(--gold)"' : ''}>${player.score} pts</b></div>`).join('');
 }
 
 document.getElementById('keyboard').innerHTML = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('').map(letter => `<button onclick="typeKey('${letter}')">${letter}</button>`).join('');
@@ -401,7 +416,15 @@ document.getElementById('keyboard').innerHTML = 'QWERTYUIOPASDFGHJKLZXCVBNM'.spl
 document.querySelector('.phone-input button').addEventListener('pointerdown', event => {
   if (document.activeElement === document.getElementById('answer')) event.preventDefault();
 });
-document.getElementById('answer').addEventListener('input', event => { event.target.value = event.target.value.toLowerCase().replace(/[^a-z]/g, '').slice(0, 8); });
+document.getElementById('answer').addEventListener('input', event => {
+  if(!state?.current)return;
+  const value=event.target.value.toLowerCase().replace(/[^a-z]/g,'');
+  const changed=value.length===state.current.length?[...value].filter((c,i)=>c!==state.current[i]).length:99;
+  if(changed<=1)event.target.value=value;
+  else if(value.length===1)typeKey(value);
+  else {event.target.value=state.current;setFeedback('Select one letter, then choose its replacement.');}
+  updateDraftPreview();
+});
 document.getElementById('answer').addEventListener('keydown', event => { if (event.key === 'Enter') submitWord(); });
 document.getElementById('joinCode').addEventListener('input', event => { event.target.value = event.target.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, '').slice(0, 5); });
 setInterval(paintClock, 250);
@@ -418,7 +441,7 @@ if (joinFromUrl && (!hasSavedSession || room !== joinFromUrl.toUpperCase())) {
     if (room !== restoringRoom || token !== restoringToken) return;
     if (tvDisplay && !next.you?.isDisplay) {state=next;return returnToStart();}
     attachRoom(next);
-    show(next.phase === 'playing' ? (next.you.isHost ? 'tv' : 'phone') : next.phase === 'roundResults' ? 'results' : next.phase === 'complete' ? 'victory' : next.phase === 'ended' ? 'ended' : 'lobby');
+    show(next.phase === 'playing' ? (next.you.isHost ? 'tv' : 'phone') : next.phase === 'paused' ? 'paused' : next.phase === 'roundResults' ? 'results' : next.phase === 'complete' ? 'victory' : next.phase === 'ended' ? 'ended' : 'lobby');
   }).catch(err => {
     if (room !== restoringRoom || token !== restoringToken) return;
     if (err.status === 404) forgetExpiredRoom('Your previous room is no longer available. Create or join a new room.');
@@ -445,9 +468,11 @@ function openMatchMenu() {
   menuReturnScreen = screens.find(screen=>screen.classList.contains('active'))?.id || 'home';
   document.getElementById('endMatchButton').disabled = !(state?.you?.canControl ?? state?.you?.isHost) || state.phase === 'ended';
   document.getElementById('menuMessage').textContent = '';
+  refreshExtraViews();
   show('matchMenu');
 }
 function resumeMatch() {
+  if(state?.phase==='paused')return show('paused');
   if(state?.phase==='ended')return show('ended');
   if(state?.phase==='complete')return show('victory');
   if(state?.phase==='roundResults')return show('results');
@@ -467,6 +492,10 @@ async function returnToStart() {
   // A host leaving stops the shared match; a guest only leaves their local view.
   if(requestBusy)return;
   if(state?.you?.isHost && state.phase!=='ended' && !await endMatch())return;
+  if(state && !state.you?.isHost){
+    try{await requestJson(`/api/rooms/${room}/leave`,{method:'POST',body:JSON.stringify({})});}
+    catch(error){show('matchMenu');document.getElementById('menuMessage').textContent=error.message;return;}
+  }
   if(stream)stream.close();stream=null;
   localStorage.removeItem(storageKey);
   room=token=state=null;previousPhase=null;localDeadline=0;
@@ -484,3 +513,63 @@ if(tvDisplay) {
   document.querySelector('#roomSetup .setup-row button').textContent='Create game →';
   document.getElementById('roomSetup').appendChild(document.getElementById('roomError'));
 }
+
+function updateDraftPreview() {
+  if(!state?.current)return;
+  const input=document.getElementById('answer'),word=input.value.toLowerCase();
+  const changes=word.length===state.current.length?[...word].filter((c,i)=>c!==state.current[i]).length:0;
+  const ready=word.length===state.current.length && changes===1;
+  document.getElementById('submitShift').disabled=!ready || !state.you?.isActive || reconnecting || requestBusy;
+  input.classList.toggle('preview-ready',ready);
+  document.getElementById('draftHint').textContent=ready?`${state.current.toUpperCase()} → ${word.toUpperCase()} · 1 letter changed`:'Select one letter, then choose its replacement.';
+}
+function refreshExtraViews() {
+  const control=Boolean(state?.you?.canControl ?? state?.you?.isHost);
+  const pause=document.getElementById('pauseButton');pause.disabled=!control || !['playing','paused'].includes(state?.phase);pause.textContent=state?.phase==='paused'?'Resume game':'Pause game';
+  if(document.getElementById('manage').classList.contains('active'))renderManagement();
+  if(document.getElementById('summary').classList.contains('active'))renderSummary();
+}
+async function roomCommand(action,body={}) {
+  if(!state || requestBusy)return false;
+  requestBusy=true;
+  try {const next=await requestJson(`/api/rooms/${room}/${action}`,{method:'POST',body:JSON.stringify({version:state.version,...body})});updateState(next);return true;}
+  catch(error){for(const id of ['menuMessage','playerMessage'])document.getElementById(id).textContent=error.message;return false;}
+  finally {requestBusy=false;updateDraftPreview();}
+}
+async function pauseOrResume(){return roomCommand(state?.phase==='paused'?'resume':'pause');}
+function showPlayers(){managerKey='';renderManagement();show('manage');}
+function renderManagement() {
+  const players=state?.players || [],control=state?.you?.canControl;
+  document.getElementById('leaveGameButton').hidden=!state?.you || Boolean(state.you.isHost);
+  const key=JSON.stringify([players,state?.phase,state?.captainId,control]);if(key===managerKey)return;managerKey=key;
+  document.getElementById('playerManager').innerHTML=players.length?players.map(p=>`<div class="manage-player"><div><b>${p.avatar} ${escapeHtml(p.name)}</b><small>${p.isBot?'Computer':p.connected?'Connected':'Disconnected · seat saved'}${p.id===state.captainId?' · Captain':''}</small></div><div class="row">${control && !p.isBot?`<button class="btn secondary small" data-id="${escapeHtml(p.id)}" data-command="captain" ${!state.displayOnly || !p.connected || p.id===state.captainId?'disabled':''}>Make captain</button><button class="btn secondary small" data-id="${escapeHtml(p.id)}" data-command="remove" ${p.connected || !['lobby','paused'].includes(state.phase) || p.id===state.hostId?'disabled':''}>Remove offline</button>`:''}</div></div>`).join(''):'<p>No players yet. Scan the QR code on the TV to join.</p>';
+  document.querySelectorAll('#playerManager [data-command]').forEach(button=>button.onclick=()=>roomCommand(button.dataset.command,{playerId:button.dataset.id}));
+}
+function showSummary(){summaryReturn=document.querySelector('.screen.active')?.id || 'matchMenu';renderSummary();show('summary');}
+function backFromSummary(){show(summaryReturn==='summary'?'matchMenu':summaryReturn);}
+function renderSummary() {
+  document.getElementById('summaryCards').innerHTML=(state?.summary || []).map(p=>{const attempts=p.valid+p.invalid,accuracy=attempts?Math.round(p.valid/attempts*100):0;return `<article class="stat-card"><h3>${p.avatar} ${escapeHtml(p.name)}${p.removed?' · Left':''} · ${p.score} pts</h3><div class="stat-values"><span><b>${p.valid}</b><small>Valid moves</small></span><span><b>${accuracy}%</b><small>Accuracy</small></span><span><b>${p.longestStreak}</b><small>Best streak</small></span><span><b>${p.roundWins}</b><small>Round wins</small></span><span><b>${p.timeouts}</b><small>Timeouts</small></span></div></article>`;}).join('') || '<p>Play a round to see your match statistics here.</p>';
+}
+async function reconnectRoom() {
+  if(!room || !token){if(!loadSession())return;}
+  setConnectionNotice('Reconnecting to your saved seat…');
+  try {const next=await requestJson(`/api/rooms/${room}`);attachRoom(next);}
+  catch(error){if(error.status===404)forgetExpiredRoom('This seat is no longer available. Join another game.');else setConnectionNotice('Still offline. Check your internet and keep the TV app open, then retry.');}
+}
+function saveDisplaySettings() {
+  const size=document.getElementById('textSize').value,margin=document.getElementById('screenMargin').value;
+  localStorage.setItem('wordshift.textSize',size);localStorage.setItem('wordshift.screenMargin',margin);applyDisplaySettings();
+}
+function applyDisplaySettings() {
+  const size=localStorage.getItem('wordshift.textSize')==='1.15'?'1.15':'1';
+  const margin=['4','5','6'].includes(localStorage.getItem('wordshift.screenMargin'))?localStorage.getItem('wordshift.screenMargin'):'4';
+  document.documentElement.style.setProperty('--text-scale',size);document.documentElement.classList.toggle('text-larger',size!=='1');
+  document.documentElement.style.setProperty('--tv-inset-y',margin+'vh');document.documentElement.style.setProperty('--tv-inset-x',margin+'vw');
+  document.getElementById('textSize').value=size;document.getElementById('screenMargin').value=margin;
+}
+function playStateSound(next) {
+  const move=next.moves?.at(-1);
+  if(move){const key=`${next.code}:${next.round}:${move.at}:${move.playerId}:${move.word}`;if(key!==lastSoundKey){lastSoundKey=key;if(move.valid)globalThis.WordShiftMusic?.effect(move.word===next.target?'target':'valid');}}
+}
+Object.assign(window,{pauseOrResume,showPlayers,showSummary,backFromSummary,reconnectRoom,saveDisplaySettings});
+applyDisplaySettings();

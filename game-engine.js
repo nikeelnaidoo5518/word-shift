@@ -14,6 +14,19 @@ const PUZZLES = [
   { start: 'good', target: 'warm' },
   { start: 'love', target: 'hate' },
 ];
+const pairs = text => text.split(',').map(pair=>{const [start,target]=pair.split(' ');return {start,target};});
+const PUZZLE_PACKS = {
+ original: PUZZLES,
+ beginner: pairs('cat dog,cat pig,dog pig,hat cap,map pen,sun man,fin pan,red bed,top cap,log can,hen pig,box hat'),
+ intermediate: pairs('cold warm,lead gold,head tail,soft hard,work play,farm town,hand foot,rain snow,good warm,love hate,dark cold,game word'),
+ expert: pairs('stone share,stone start,sleep dream,black white,smile frown,small large,bread toast,heart spade,dream story,plane train,spare stone,green brown'),
+};
+PUZZLE_PACKS.mixed=[...PUZZLE_PACKS.beginner,...PUZZLE_PACKS.intermediate,...PUZZLE_PACKS.expert];
+function packOrder(pack,seed) {
+ const pool=[...(PUZZLE_PACKS[pack] || PUZZLES)];let value=seed>>>0;
+ for(let i=pool.length-1;i>0;i--){value=(Math.imul(value,1664525)+1013904223)>>>0;const j=value%(i+1);[pool[i],pool[j]]=[pool[j],pool[i]];}
+ return pool;
+}
 COMMON_WORDS.add('good'); COMMON_WORDS.add('wood'); COMMON_WORDS.add('love'); COMMON_WORDS.add('hove'); COMMON_WORDS.add('have'); COMMON_WORDS.add('hate');
 const ROUND_NAMES = ['Warm-Up', 'Speed Shift', 'Twist Round', 'Pressure Round', 'Grand Finale', 'Lightning Round', 'Mega Finale'];
 const TURN_SECONDS = [40, 25, 25, 15, 15, 20, 15];
@@ -78,16 +91,17 @@ function targetMatches(word, target) {
   return count;
 }
 
-function puzzleForRound(roundIndex) {
-  const pair = PUZZLES[roundIndex % PUZZLES.length];
+function puzzleForRound(roundIndex, pack = 'original', seed = 0) {
+  const pool=pack==='original'?PUZZLES:packOrder(pack,seed);
+  const pair = pool[roundIndex % pool.length];
   const path = shortestPath(pair.start, pair.target, new Set(), COMMON_WORDS) || shortestPath(pair.start, pair.target);
   if (!path) throw new Error(`No dictionary route for ${pair.start} → ${pair.target}`);
   return {
     ...pair,
     route: path,
     roundName: ROUND_NAMES[roundIndex % ROUND_NAMES.length],
-    timerSeconds: TURN_SECONDS[roundIndex % TURN_SECONDS.length],
-    difficulty: ['Easy', 'Medium', 'Medium', 'Hard', 'Hard', 'Hard', 'Super Hard'][roundIndex % 7],
+    timerSeconds: pack==='original'?TURN_SECONDS[roundIndex % TURN_SECONDS.length]:pack==='intermediate'?35:45,
+    difficulty: pack==='original'?['Easy', 'Medium', 'Medium', 'Hard', 'Hard', 'Hard', 'Super Hard'][roundIndex % 7]:pack[0].toUpperCase()+pack.slice(1),
     modifier: MODIFIERS[roundIndex % MODIFIERS.length],
   };
 }
@@ -110,6 +124,7 @@ return {
   words,
   dictionary,
   PUZZLES,
+  PUZZLE_PACKS,
   ROUND_NAMES,
   TURN_SECONDS,
   BOT_DELAY_MS,

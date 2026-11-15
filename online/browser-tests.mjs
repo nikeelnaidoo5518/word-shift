@@ -26,6 +26,7 @@ try {
   await host.getByRole('button',{name:'Start game',exact:false}).click();
   await host.locator('#intro.active').waitFor();await host.getByRole('button',{name:'Let’s play',exact:false}).click();
   await host.locator('#tv button').filter({hasText:'Phone view'}).click();
+  await host.evaluate(()=>{globalThis.testEffects=[];const play=WordShiftMusic.effect;WordShiftMusic.effect=name=>{testEffects.push(name);return play(name);};});
   for(const [page,word] of [[host,'dots'],[phone,'cots'],[host,'cats']]) {
     await page.locator('#phoneTurn').waitFor({state:'visible'});await page.locator('#answer').fill(word);
     await page.getByRole('button',{name:'SHIFT ↗',exact:true}).click();
@@ -34,6 +35,7 @@ try {
   for(const page of [host,phone])await page.locator('#results.active').waitFor();
   assert.equal(await host.evaluate(()=>state.totalMoves),3);
   assert.equal(await phone.evaluate(()=>state.moveCounts[state.you.id]),1);
+  assert.ok(await host.evaluate(()=>testEffects.includes('valid') && testEffects.includes('target')));
   const oldVersion=await host.evaluate(()=>state.version);
   await host.reload();await host.locator('#results.active').waitFor();
   assert.equal(await host.evaluate(()=>state.version),oldVersion,'Host checkpoint survives reload');
@@ -63,7 +65,7 @@ try {
   await host.getByRole('button',{name:'End game for everyone',exact:true}).click();
   for(const page of [host,phone])await page.locator('#ended.active').waitFor();
   assert.equal(await phone.evaluate(()=>state.phase),'ended');
-  await host.locator('#ended button').click();
+  await host.locator('#ended').getByRole('button',{name:'Return to start',exact:true}).click();
   await host.locator('#home.active').waitFor();
   assert.equal(await host.evaluate(()=>localStorage.getItem('wordshift.room.session')),null);
   await host.reload();await host.locator('#home.active').waitFor();

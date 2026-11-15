@@ -301,3 +301,22 @@ test('TV HTTP session restores without a player seat and a phone captain starts 
  assert.equal((await post(`/api/rooms/${code}/move`,tv.body.token,{word:'dots',version:rooms.get(code).version})).status,403);
  assert.equal((await post(`/api/rooms/${code}/end`,tv.body.token,{version:rooms.get(code).version})).status,200);
 });
+
+test('HTTP pause, captain transfer, offline removal and leave preserve the shared match safely',async()=>{
+ await new Promise(resolve=>server.listening?resolve():server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}`;
+ const post=async(path,token,body={})=>{const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json',...(token?{'x-player-token':token}:{})},body:JSON.stringify(body)});return {status:r.status,body:await r.json()};};
+ const tv=await post('/api/rooms',null,{displayOnly:true}),code=tv.body.state.code,phones=[];
+ for(const name of ['Alpha','Bravo','Charlie']){const p=await post(`/api/rooms/${code}/join`,null,{name});phones.push(p.body);await post(`/api/rooms/${code}/ready`,p.body.token,{ready:true,version:rooms.get(code).version});}
+ const [a,b,c]=phones,abort=new AbortController();
+ try{
+  const stream=await fetch(base+`/api/events?room=${code}&token=${b.token}`,{signal:abort.signal});assert.equal(stream.status,200);
+  assert.equal((await post(`/api/rooms/${code}/start`,a.token,{version:rooms.get(code).version})).status,200);
+  await post(`/api/rooms/${code}/move`,a.token,{word:'dots',version:rooms.get(code).version});
+  const paused=await post(`/api/rooms/${code}/pause`,tv.body.token);assert.equal(paused.body.phase,'paused');assert.equal(paused.body.turnDeadline,null);
+  assert.equal((await post(`/api/rooms/${code}/captain`,tv.body.token,{playerId:b.state.you.id,version:rooms.get(code).version})).status,200);
+  const removed=await post(`/api/rooms/${code}/remove`,tv.body.token,{playerId:c.state.you.id,version:rooms.get(code).version});assert.equal(removed.status,200);assert.equal(removed.body.players.length,2);
+  assert.equal((await post(`/api/rooms/${code}/leave`,b.token)).status,200);assert.equal(rooms.get(code).phase,'ended');
+  assert.equal((await fetch(base+`/api/rooms/${code}`,{headers:{'x-player-token':c.token}})).status,404);
+  assert.equal(removed.body.summary.find(p=>p.name==='Alpha').valid,1);
+ }finally{abort.abort();}
+});
