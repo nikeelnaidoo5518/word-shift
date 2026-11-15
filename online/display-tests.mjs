@@ -19,7 +19,8 @@ try{
   }finally{if(oldCode)await page.evaluate(code=>WordShiftOnline.closeOwnedRoom(code),oldCode).catch(()=>{});await ctx.close();}
  }
  for(const [mode,count] of [['Classic Multiplayer',2],['Head-to-Head',2],['Player vs Computer',1],['Team Battle',4],['Party Chaos',2]]){
-  const contexts=[];let tv,code;const errors=[];
+  if(process.env.DISPLAY_TEST_MODE && mode!==process.env.DISPLAY_TEST_MODE)continue;
+  const contexts=[];let tv,code;const errors=[],phones=[];
   try{
    const context=await browser.newContext({viewport:{width:1280,height:720}});contexts.push(context);tv=await context.newPage();tv.on('pageerror',e=>errors.push(e.message));
    await tv.goto(base+'?tv=1');assert.equal(await tv.evaluate(()=>WORD_SHIFT_FIREBASE.projectId),live?'sa-trivia-showdown-5518-f09c4':'demo-word-shift');
@@ -30,7 +31,7 @@ try{
    assert.equal(await tv.evaluate(()=>state.players.filter(p=>!p.isBot).length),0);
    assert.equal(await tv.locator('#lobbyAction').isDisabled(),true);
    await tv.locator('#joinQr svg').waitFor();
-   const phones=[];
+
    for(let i=0;i<count;i++){
     const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});contexts.push(ctx);
     const phone=await ctx.newPage();phones.push(phone);phone.on('pageerror',e=>errors.push(e.message));
@@ -60,6 +61,9 @@ try{
    for(const page of [tv,...phones])await page.locator('#ended.active').waitFor();
    assert.deepEqual(errors,[]);
    console.log('PASS: display-only TV, correct phone seats/readiness, TV or phone start, legal phone move, TV reload and end: '+mode);
+  }catch(error){
+   for(const page of [tv,...phones])if(page)console.log('Display check diagnostic',mode,await page.evaluate(()=>({phase:state?.phase,current:state?.current,version:state?.version,you:state?.you,menu:document.getElementById('menuMessage').textContent,connection:document.getElementById('connectionNotice').textContent,screen:document.querySelector('.screen.active')?.id})).catch(()=>null));
+   throw error;
   }finally{
    if(tv&&code)await tv.evaluate(code=>WordShiftOnline.closeOwnedRoom(code),code).catch(()=>{});
    for(const context of contexts)await context.close();

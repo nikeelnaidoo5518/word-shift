@@ -49,8 +49,8 @@ test('only host can end a match; all later moves stop and the deadline is cleare
   room.players.push({id:'guest',name:'Guest',score:0,ready:true,roundWins:0});
   rules.action(room,room.players[0],'start');
   assert.equal(rules.action(room,room.players[1],'end',{version:room.version}).status,403);
-  assert.equal(rules.action(room,room.players[0],'end',{version:room.version-1}).status,409);
-  assert.equal(rules.action(room,room.players[0],'end',{version:room.version}).status,200);
+  assert.equal(rules.action(room,room.players[0],'end',{version:room.version-1}).status,200,'ending remains safe when a bot move races the menu click');
+  assert.equal(rules.action(room,room.players[0],'end',{version:room.version}).status,200,'ending is idempotent');
   assert.equal(room.phase,'ended');assert.equal(room.turnDeadline,null);
   assert.equal(rules.action(room,room.players[0],'move',{word:'dots',version:room.version}).status,409);
 });

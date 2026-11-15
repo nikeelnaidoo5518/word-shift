@@ -173,7 +173,7 @@ function acceptMove(room, player, word) {
 function action(room, player, action, body = {}) {
   const fail = (status, error) => ({ status, body: { error, state: publicState(room, player) } });
   const success = () => ({ status: 200, body: publicState(room, player) });
-  if ((action === 'move' || body.version !== undefined) && body.version !== room.version) return fail(409, 'The game changed. Your screen has been updated; try again.');
+  if (action !== 'end' && (action === 'move' || body.version !== undefined) && body.version !== room.version) return fail(409, 'The game changed. Your screen has been updated; try again.');
   if (action === 'ready') {
     if (player.isDisplay) return fail(403, 'The TV is a display, not a player.');
     if (room.phase !== 'lobby') return fail(409, 'The lobby is already closed.');
