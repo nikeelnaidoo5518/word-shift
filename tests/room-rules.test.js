@@ -54,3 +54,27 @@ test('only host can end a match; all later moves stop and the deadline is cleare
   assert.equal(room.phase,'ended');assert.equal(room.turnDeadline,null);
   assert.equal(rules.action(room,room.players[0],'move',{word:'dots',version:room.version}).status,409);
 });
+
+test('TV display takes no seat or turn in all modes; first human phone can control the match',()=>{
+ for(const [mode,config] of Object.entries(MODES)){
+  const rules=createRules(engine),room=rules.makeRoom({code:'ABCDE',hostId:'tv',mode,displayOnly:true});
+  assert.equal(room.players.filter(p=>!p.isBot).length,0);
+  assert.equal(rules.action(room,room.display,'start').status,409,'cannot start before phones join');
+  for(let i=0;i<config.min;i++)room.players.splice(i,0,{id:'phone'+i,name:'Phone '+i,score:0,ready:true,roundWins:0,team:mode==='teams'?(i%2?'red':'blue'):null});
+  const state=rules.publicState(room,room.display);assert.equal(state.you.isDisplay,true);assert.equal(state.you.canControl,true);
+  assert.equal(state.captainId,'phone0');assert.equal(state.players.some(p=>p.id==='tv'),false);
+  assert.equal(rules.publicState(room,room.players[0]).you.canControl,true);
+  if(config.min>1)assert.equal(rules.action(room,room.players[1],'start').status,403);
+  room.players[0].ready=false;assert.equal(rules.action(room,room.display,'start').status,409);room.players[0].ready=true;
+  assert.equal(rules.action(room,room.players[0],'start').status,200);
+  assert.equal(rules.activePlayer(room).id,'phone0');
+  assert.equal(rules.action(room,room.display,'move',{word:'dots',version:room.version}).status,403);
+  assert.equal(rules.action(room,room.players[0],'move',{word:'dots',version:room.version}).status,200);
+  assert.notEqual(rules.activePlayer(room).id,'tv');
+  for(const word of ['cots','cats'])assert.equal(rules.action(room,rules.activePlayer(room),'move',{word,version:room.version}).status,200);
+  assert.equal(room.phase,'roundResults');
+  assert.equal(rules.action(room,room.players[0],'next').status,200,'phone captain can advance rounds');
+  assert.equal(room.round,2);
+  assert.equal(rules.action(room,room.display,'end').status,200);
+ }
+});

@@ -90,7 +90,7 @@ function closeRoom(room, reason = 'This room expired after two hours without pla
 function maintainRooms(now = Date.now()) {
   for (const room of rooms.values()) {
     if (now - room.lastActivityAt >= ROOM_TTL_MS) { closeRoom(room); continue; }
-    if (room.hostDisconnectedAt && now - room.hostDisconnectedAt >= 15_000 && !connected(room, room.hostId)) {
+    if (!room.display && room.hostDisconnectedAt && now - room.hostDisconnectedAt >= 15_000 && !connected(room, room.hostId)) {
       const successor = room.players.find(player => !player.isBot && connected(room, player.id));
       if (successor) {
         room.hostId = successor.id; room.hostDisconnectedAt = null;
@@ -103,7 +103,7 @@ function maintainRooms(now = Date.now()) {
 function getToken(req, url) { return req.headers['x-player-token'] || url.searchParams.get('token') || ''; }
 function requirePlayer(room, token) {
   if (!room || !token) return null;
-  return room.players.find(player => player.token === token) || null;
+  return room.players.find(player => player.token === token) || (room.display?.token === token ? room.display : null);
 }
 const { MODES, createRules } = require('./room-rules');
 const rules = createRules(engine, { onChange: room => { broadcast(room); if (room.phase === 'playing') scheduleAI(room); }, isConnected: connected });
@@ -184,8 +184,9 @@ const server = http.createServer(async (req, res) => {
       if (mode === 'computer') players.push({ id: randomToken(8), token: null, name: botDifficulty, avatar: '🧠', score: 0, ready: true, roundWins: 0, isBot: true, difficulty: botDifficulty });
       const code = roomCode();
       const room = { code, mode, players, hostId: player.id, phase: 'lobby', round: 0, rounds: config.rounds, version: 1, history: [], moves: [], used: new Set(), activeIndex: 0, turnDeadline: null, createdAt: Date.now(), updatedAt: Date.now(), lastActivityAt: Date.now(), hostDisconnectedAt: null, lastMessage: 'Room created. Share the code to invite players.', puzzle: null, resets: 0, unresolved: false, roundWinnerId: null, championId: null, championIds: [], championTeam: null, teamWins: { blue: 0, red: 0 } };
+      if (body.displayOnly === true) {room.display = {...player,name:'TV display',isDisplay:true};room.players = players.filter(p=>p.id!==player.id);}
       rooms.set(code, room);
-      return send(res, 201, { state: publicState(room, player), token: player.token, joinUrl: `/?join=${code}` });
+      return send(res, 201, { state: publicState(room, room.display || player), token: player.token, joinUrl: `/?join=${code}` });
     }
     const joinMatch = p.match(/^\/api\/rooms\/([A-Z2-9]+)\/join$/);
     if (req.method === 'POST' && joinMatch) {
@@ -200,7 +201,7 @@ const server = http.createServer(async (req, res) => {
       if (!name) return error(res, 400, 'Enter a nickname first.');
       if (room.players.some(p => p.name.toLowerCase() === name.toLowerCase())) return error(res, 409, 'That nickname is already in this room.');
       const player = { id: randomToken(8), token: randomToken(), name, avatar: ALLOWED_AVATARS.has(body.avatar) ? body.avatar : '🐸', score: 0, ready: false, roundWins: 0, team: room.mode === 'teams' ? (room.players.length % 2 ? 'red' : 'blue') : null };
-      room.players.push(player);
+      room.players.splice(room.players.filter(p=>!p.isBot).length,0,player);
       room.lastActivityAt = Date.now();
       room.lastMessage = `${name} joined the room.`;
       touch(room);

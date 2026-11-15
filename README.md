@@ -18,7 +18,7 @@ Change exactly one letter to make a valid unused word. Every submission passes t
 
 Classic, Head-to-Head, Player vs Computer, Team Battle, and Party Chaos remain available. Round scores, championships, five computer difficulties, and team seats are preserved. Party Chaos special modifier effects beyond existing timer variations remain future work.
 
-The TV host occupies one player slot. Select Phone view to take its turns using the remote/on-screen keyboard. A spectator-only TV role is not implemented.
+The TV app is display-only: choose a mode, select Create game, then players scan the QR and join on phones. The TV takes no seat or turns. Each player taps Ready; start on the TV or the first phone (captain). That phone can also advance rounds and end the match. Keep the TV open. Browser-hosted play without `?tv=1` still supports a playing host.
 
 ## Run locally without online services
 

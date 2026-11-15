@@ -13,7 +13,7 @@ try {
   await phone.routeWebSocket('ws://127.0.0.1:9000/**',socket=>{socket.connectToServer();phoneSockets.push(socket);});
   const errors=[];
   for(const page of [host,phone]){page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(process.env.DEBUG_ONLINE && ['error','warning'].includes(m.type()))console.log(m.type(),m.text());});}
-  await host.goto(base+'?tv=1');
+  await host.goto(base);
   assert.equal(await host.evaluate(()=>WORD_SHIFT_FIREBASE.projectId),'demo-word-shift','Never run this suite against a real Firebase project');
   await host.evaluate(()=>chooseMode('Classic Multiplayer'));
   await host.getByRole('button',{name:'Create room →',exact:true}).click();

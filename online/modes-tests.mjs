@@ -14,7 +14,7 @@ try {
       for(let i=0;i<count;i++){
         const context=await browser.newContext({viewport:{width:i?390:1280,height:i?844:720}});contexts.push(context);
         const page=await context.newPage();pages.push(page);
-        await page.goto(base+(i?'': '?tv=1'));
+        await page.goto(base);
         assert.equal(await page.evaluate(()=>WORD_SHIFT_FIREBASE.projectId),'demo-word-shift');
         if(!i){await page.evaluate(mode=>chooseMode(mode),mode);await page.getByRole('button',{name:'Create room →',exact:true}).click();await page.waitForFunction(()=>state?.code);code=await page.locator('#roomCode').textContent();}
         else {await page.evaluate(()=>show('lobby'));await page.locator('#joinCode').fill(code);await page.locator('#joinName').fill('Phone '+i);await page.getByRole('button',{name:'Join →',exact:true}).click();await page.getByRole('button',{name:'Tap when ready',exact:true}).click();}

@@ -24,6 +24,8 @@ function publicState(room, player) {
     maxPlayers: MODES[room.mode].max + (room.mode === 'computer' ? 1 : 0),
     phase: room.phase,
     hostId: room.hostId,
+    displayOnly: Boolean(room.display),
+    captainId: room.display ? room.players.find(p => !p.isBot)?.id || null : room.hostId,
     round: room.round,
     rounds: room.rounds,
     roundName: room.puzzle?.roundName || null,
@@ -50,10 +52,11 @@ function publicState(room, player) {
     unresolved: room.unresolved,
     resets: room.resets,
     version: room.version,
-    you: player ? { id: player.id, name: player.name, avatar: player.avatar, isHost: player.id === room.hostId, isActive: player.id === active?.id, ready: player.ready } : null,
+    you: player ? { id: player.id, name: player.name, avatar: player.avatar, isHost: player.id === room.hostId, isDisplay: Boolean(player.isDisplay), canControl: canControl(room, player), isActive: player.id === active?.id, ready: player.ready } : null,
     players: room.players.map(({ id, name, avatar, score, ready, roundWins, isBot }) => ({ id, name, avatar, score, ready, roundWins, isBot: Boolean(isBot), connected: Boolean(isBot) || isConnected(room, id), team: room.mode === 'teams' ? (room.players.findIndex(p => p.id === id) % 2 ? 'red' : 'blue') : null })),
   };
 }
+function canControl(room, player) { return Boolean(player && (player.id === room.hostId || (room.display && player.id === room.players.find(p => !p.isBot)?.id))); }
 function touch(room) { room.updatedAt = now(); room.version++; onChange(room); }
 function resetTurn(room) { room.activeIndex = (room.activeIndex + 1) % room.players.length; room.turnDeadline = now() + room.puzzle.timerSeconds * 1000; }
 function startRound(room) {
@@ -172,10 +175,11 @@ function action(room, player, action, body = {}) {
   const success = () => ({ status: 200, body: publicState(room, player) });
   if ((action === 'move' || body.version !== undefined) && body.version !== room.version) return fail(409, 'The game changed. Your screen has been updated; try again.');
   if (action === 'ready') {
+    if (player.isDisplay) return fail(403, 'The TV is a display, not a player.');
     if (room.phase !== 'lobby') return fail(409, 'The lobby is already closed.');
     player.ready = Boolean(body.ready); room.lastMessage = `${player.name} is ${player.ready ? 'ready' : 'not ready'}.`; touch(room); return success();
   }
-  if (['start', 'next', 'restart', 'end'].includes(action) && player.id !== room.hostId) return fail(403, 'Only the host can control the match.');
+  if (['start', 'next', 'restart', 'end'].includes(action) && !canControl(room, player)) return fail(403, 'Only the TV or phone captain can control the match.');
   if (action === 'end') {
     room.phase = 'ended'; room.turnDeadline = null; room.lastMessage = 'The host ended this match.'; touch(room); return success();
   }
@@ -210,11 +214,11 @@ function action(room, player, action, body = {}) {
   }
   return fail(404, 'Unknown game action.');
 }
-function makeRoom({code, mode = 'classic', hostId, name = 'Host', avatar = '🦊', difficulty = 'Quick Thinker'}) {
+function makeRoom({code, mode = 'classic', hostId, name = 'Host', avatar = '🦊', difficulty = 'Quick Thinker', displayOnly = false}) {
   if (!Object.hasOwn(MODES, mode)) mode = 'classic';
-  const players = [{ id: hostId, name, avatar, score: 0, ready: true, roundWins: 0, team: mode === 'teams' ? 'blue' : null }];
+  const players = displayOnly ? [] : [{ id: hostId, name, avatar, score: 0, ready: true, roundWins: 0, team: mode === 'teams' ? 'blue' : null }];
   if (mode === 'computer') players.push({id:'computer',name:difficulty,avatar:'🧠',score:0,ready:true,roundWins:0,isBot:true,difficulty});
-  return {code,mode,players,hostId,phase:'lobby',round:0,rounds:MODES[mode].rounds,version:1,history:[],moves:[],used:new Set(),activeIndex:0,turnDeadline:null,createdAt:now(),updatedAt:now(),lastActivityAt:now(),lastMessage:'Room created. Scan the QR code to invite players.',puzzle:null,resets:0,unresolved:false,roundWinnerId:null,championId:null,championIds:[],championTeam:null,teamWins:{blue:0,red:0}};
+  return {code,mode,players,hostId,...(displayOnly ? {display:{id:hostId,name:'TV display',avatar:'📺',isDisplay:true}} : {}),phase:'lobby',round:0,rounds:MODES[mode].rounds,version:1,history:[],moves:[],used:new Set(),activeIndex:0,turnDeadline:null,createdAt:now(),updatedAt:now(),lastActivityAt:now(),lastMessage:'Room created. Scan the QR code to invite players.',puzzle:null,resets:0,unresolved:false,roundWinnerId:null,championId:null,championIds:[],championTeam:null,teamWins:{blue:0,red:0}};
 }
 return {activePlayer, publicState, touch, startRound, endRound, nextRound, applyTimeout, acceptMove, resetTurn, logMove, action, makeRoom};
 }

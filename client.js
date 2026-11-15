@@ -1,5 +1,6 @@
 'use strict';
 
+const tvDisplay = new URLSearchParams(location.search).get('tv') === '1';
 const screens = [...document.querySelectorAll('.screen')];
 const storageKey = 'wordshift.room.session';
 const avatars = ['🦊', '🐸', '🐯', '🐼', '🦁', '🐨', '🐙', '🐧', '🐻', '🐰', '🐵', '🦄'];
@@ -22,6 +23,7 @@ let reconnecting = false;
 let reconnectProbe = false;
 
 function show(id) {
+  if (id === 'phone' && state?.you?.isDisplay) id = 'tv';
   const active = screens.find(screen => screen.classList.contains('active'))?.id;
   if (id === 'settings' && active) previousScreen = active;
   screens.forEach(screen => screen.classList.toggle('active', screen.id === id));
@@ -87,7 +89,7 @@ async function createRoom() {
   try {
     const name = document.getElementById('hostName').value.trim() || 'Host';
     const botDifficulty = document.getElementById('botDifficulty')?.value || 'Quick Thinker';
-    const result = await requestJson('/api/rooms', { method: 'POST', body: JSON.stringify({ name, avatar: '🦊', mode: selectedMode, botDifficulty }) });
+    const result = await requestJson('/api/rooms', { method: 'POST', body: JSON.stringify({ name, avatar: '🦊', mode: selectedMode, botDifficulty, displayOnly: tvDisplay }) });
     room = result.state.code;
     token = result.token;
     saveSession();
@@ -166,7 +168,8 @@ function updateState(next) {
     renderGame();
     renderPhone();
     if (oldPhase !== 'playing') {
-      if (next.you?.isHost) { updateIntro(); show('intro'); }
+      if (next.you?.isDisplay) show('tv');
+      else if (next.you?.isHost) { updateIntro(); show('intro'); }
       else show('phone');
     }
   }
@@ -190,14 +193,14 @@ function renderLobby() {
   slots.innerHTML = state.players.map(player => `<div class="slot joined ${player.team || ''}"><span class="avatar">${player.avatar}</span><strong>${escapeHtml(player.name)}${player.id === state.you.id ? ' · You' : ''}</strong><small>${player.isBot ? '● COMPUTER' : player.connected === false ? '○ OFFLINE' : player.ready ? '● READY' : '○ NOT READY'}${player.team ? ` · ${player.team.toUpperCase()} TEAM` : ''}</small></div>`).join('') + Array.from({ length: Math.max(0, state.maxPlayers - state.players.length) }, () => '<div class="slot"><span class="empty-slot">＋<br>Waiting for player</span></div>').join('');
   document.querySelector('.lobby-main .lobby-title h2').innerHTML = `Players <span style="color:var(--muted);font:500 15px var(--sans)">${state.players.length} / ${state.maxPlayers}</span>`;
   const button = document.getElementById('lobbyAction');
-  if (state.you.isHost) {
+  if ((state.you.canControl ?? state.you.isHost) && (state.you.isDisplay || state.you.ready)) {
     button.innerHTML = 'Start game <span>→</span>';
     button.disabled = state.players.filter(p => !p.isBot).length < state.minPlayers || !state.players.every(p => p.ready);
     document.getElementById('lobbyMessage').textContent = state.players.filter(p => !p.isBot).length < state.minPlayers ? `Invite at least ${state.minPlayers} human player${state.minPlayers === 1 ? '' : 's'}.` : state.players.every(p => p.ready) ? 'Everyone is ready.' : 'Waiting for every player to tap Ready.';
   } else {
     button.innerHTML = state.you.ready ? 'Ready ✓' : 'Tap when ready';
     button.disabled = false;
-    document.getElementById('lobbyMessage').textContent = 'Tap Ready when you’re set. The host starts the match.';
+    document.getElementById('lobbyMessage').textContent = state.you.canControl ? 'Tap Ready, then start here or on the TV once everyone is ready.' : 'Tap Ready when you’re set. The TV or first phone player starts the game.';
   }
 }
 
@@ -261,7 +264,7 @@ async function startOrReady() {
   if (!state || requestBusy || reconnecting) return;
   requestBusy = true;
   try {
-    if (state.you.isHost) {
+    if ((state.you.canControl ?? state.you.isHost) && (state.you.isDisplay || state.you.ready)) {
       await requestJson(`/api/rooms/${room}/start`, { method: 'POST', body: JSON.stringify({ version: state.version }) });
     } else {
       await requestJson(`/api/rooms/${room}/ready`, { method: 'POST', body: JSON.stringify({ ready: !state.you.ready, version: state.version }) });
@@ -295,7 +298,8 @@ function renderGame() {
   document.getElementById('ladder').innerHTML = state.history.map((word, i) => `<span class="ladder-chip ${i === state.history.length - 1 ? 'current-chip' : ''}">${word.toUpperCase()}</span>`).join('');
   document.getElementById('players').innerHTML = state.players.map((player, i) => `<div class="player-card ${player.id === state.activePlayerId ? 'active-player' : ''} ${player.team ? `team-${player.team}` : ''}"><span class="miniavatar">${player.avatar}</span><span><b>${escapeHtml(player.name)}</b><small>${player.score} PTS${player.team ? ` · ${player.team.toUpperCase()}` : ''}${player.connected === false ? ' · OFFLINE' : ''}</small></span></div>`).join('');
   const counts = state.moveCounts || {};
-  document.getElementById('tvMoves').textContent = `${state.totalMoves || 0} moves this round · You: ${counts[state.you?.id] || 0}`;
+  document.getElementById('tvMoves').textContent = state.you?.isDisplay ? `${state.totalMoves || 0} moves this round` : `${state.totalMoves || 0} moves this round · You: ${counts[state.you?.id] || 0}`;
+  document.getElementById('phoneViewButton').hidden = Boolean(state.you?.isDisplay);
   paintClock();
 }
 
@@ -311,7 +315,7 @@ function paintClock() {
 }
 
 function renderPhone() {
-  if (!state || state.phase !== 'playing') return;
+  if (!state || state.phase !== 'playing' || state.you?.isDisplay) return;
   const mine = state.you?.isActive;
   document.getElementById('answer').maxLength = state.current.length;
   document.getElementById('phoneMoves').textContent = `Your moves: ${state.moveCounts?.[state.you?.id] || 0} · Round total: ${state.totalMoves || 0}`;
@@ -340,7 +344,7 @@ function typeKey(letter) {
 }
 
 async function submitWord() {
-  if (!state?.you?.isActive || requestBusy || reconnecting) return;
+  if (state?.you?.isDisplay || !state?.you?.isActive || requestBusy || reconnecting) return;
   const input = document.getElementById('answer');
   const word = input.value.trim().toLowerCase();
   if (!word) { setFeedback('Enter a word to make your shift.'); return; }
@@ -360,7 +364,7 @@ function setFeedback(message) {
 }
 
 async function nextRound() {
-  if (!state?.you?.isHost || requestBusy || reconnecting) return;
+  if (!(state?.you?.canControl ?? state?.you?.isHost) || requestBusy || reconnecting) return;
   requestBusy = true;
   try { await requestJson(`/api/rooms/${room}/next`, { method: 'POST', body: JSON.stringify({ version: state.version }) }); }
   catch (err) { setFeedback(err.message); }
@@ -369,7 +373,7 @@ async function nextRound() {
 
 async function playAgain() {
   if (reconnecting || requestBusy) return;
-  if (!state?.you?.isHost) { show('home'); return; }
+  if (!(state?.you?.canControl ?? state?.you?.isHost)) { show('home'); return; }
   requestBusy = true;
   try { await requestJson(`/api/rooms/${room}/restart`, { method: 'POST', body: JSON.stringify({ version: state.version }) }); }
   catch (err) { setRoomError(err.message); show('lobby'); }
@@ -382,7 +386,7 @@ function renderResults() {
   document.getElementById('roundScores').innerHTML = [...state.players].sort((a, b) => b.score - a.score).map((player, i) => `<div class="score-row"><span>${player.avatar} ${escapeHtml(player.name)}${player.id === state.roundWinnerId ? ' · round winner' : ''}</span><b ${i === 0 ? 'style="color:var(--gold)"' : ''}>${player.score}</b></div>`).join('');
   const next = document.getElementById('nextButton');
   next.textContent = state.round >= state.rounds ? 'Match complete' : 'Next round →';
-  next.disabled = state.round >= state.rounds || !state.you.isHost;
+  next.disabled = state.round >= state.rounds || !(state.you.canControl ?? state.you.isHost);
 }
 
 function renderVictory() {
@@ -412,6 +416,7 @@ if (joinFromUrl && (!hasSavedSession || room !== joinFromUrl.toUpperCase())) {
   const restoringRoom = room, restoringToken = token;
   requestJson(`/api/rooms/${encodeURIComponent(room)}?token=${encodeURIComponent(token)}`).then(next => {
     if (room !== restoringRoom || token !== restoringToken) return;
+    if (tvDisplay && !next.you?.isDisplay) {state=next;return returnToStart();}
     attachRoom(next);
     show(next.phase === 'playing' ? (next.you.isHost ? 'tv' : 'phone') : next.phase === 'roundResults' ? 'results' : next.phase === 'complete' ? 'victory' : next.phase === 'ended' ? 'ended' : 'lobby');
   }).catch(err => {
@@ -438,7 +443,7 @@ window.playAgain = playAgain;
 
 function openMatchMenu() {
   menuReturnScreen = screens.find(screen=>screen.classList.contains('active'))?.id || 'home';
-  document.getElementById('endMatchButton').disabled = !state?.you?.isHost || state.phase === 'ended';
+  document.getElementById('endMatchButton').disabled = !(state?.you?.canControl ?? state?.you?.isHost) || state.phase === 'ended';
   document.getElementById('menuMessage').textContent = '';
   show('matchMenu');
 }
@@ -450,7 +455,7 @@ function resumeMatch() {
 }
 function backFromHelp(){show(state?'matchMenu':'home');}
 async function endMatch() {
-  if(!state?.you?.isHost || requestBusy)return false;
+  if(!(state?.you?.canControl ?? state?.you?.isHost) || requestBusy)return false;
   requestBusy=true;
   try {
     const next=await requestJson(`/api/rooms/${room}/end`,{method:'POST',body:JSON.stringify({version:state.version})});
@@ -472,3 +477,10 @@ async function returnToStart() {
   show('home');
 }
 Object.assign(window,{openMatchMenu,resumeMatch,backFromHelp,endMatch,returnToStart});
+
+if(tvDisplay) {
+  document.querySelector('#roomSetup .setup-card h3').textContent='Create game';
+  document.querySelector('#roomSetup .setup-card p').textContent='This TV displays the game. All players join on their phones by scanning the QR code.';
+  document.querySelector('#roomSetup .setup-row button').textContent='Create game →';
+  document.getElementById('roomSetup').appendChild(document.getElementById('roomError'));
+}

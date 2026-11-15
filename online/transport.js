@@ -49,8 +49,8 @@ async function boot() {
 function view(state, uid=auth.currentUser.uid) {
   const next=JSON.parse(JSON.stringify(state));
   next.players ||= [];next.history ||= [];next.moves ||= [];next.championIds ||= [];
-  const player=next.players.find(player=>player.id===uid);
-  next.you=player ? {...player,isHost:uid===next.hostId,isActive:uid===next.activePlayerId} : null;
+  const player=next.players.find(player=>player.id===uid) || (next.displayOnly && uid===next.hostId ? {id:uid,name:'TV display',isDisplay:true} : null);
+  next.you=player ? {...player,isHost:uid===next.hostId,canControl:uid===next.hostId || uid===next.captainId,isActive:uid===next.activePlayerId} : null;
   next.secondsLeft=next.turnDeadline ? Math.max(0,Math.ceil((next.turnDeadline-now())/1000)) : 0;
   return next;
 }
@@ -153,7 +153,7 @@ async function joinMember(controller,uid,profile) {
   if(host!==controller)return;
   const room=controller.room, requestId=profile.requestId;
   if(remembered(controller,uid,requestId))return;
-  const existing=room.players.find(player=>player.id===uid);
+  const existing=room.players.find(player=>player.id===uid) || (room.display?.id===uid ? room.display : null);
   if(existing) {await respond(controller,uid,requestId,{status:200,body:{}});return;}
   const mode=globalThis.WordShiftRules.MODES[room.mode];
   let error=null;
@@ -163,13 +163,13 @@ async function joinMember(controller,uid,profile) {
   else if(!name)error='Enter a nickname first.';
   else if(room.players.some(player=>player.name.toLowerCase()===name.toLowerCase()))error='That nickname is already in this room.';
   if(error) {await respond(controller,uid,requestId,failure(409,error));return;}
-  room.players.push({id:uid,name,avatar:avatars.has(profile.avatar)?profile.avatar:'🐸',score:0,ready:false,roundWins:0,team:room.mode==='teams'?(room.players.length%2?'red':'blue'):null});
+  room.players.splice(room.players.filter(p=>!p.isBot).length,0,{id:uid,name,avatar:avatars.has(profile.avatar)?profile.avatar:'🐸',score:0,ready:false,roundWins:0,team:room.mode==='teams'?(room.players.length%2?'red':'blue'):null});
   room.lastActivityAt=now();room.lastMessage=`${name} joined the room.`;rules.touch(room);
   await respond(controller,uid,requestId,{status:201,body:{}});
 }
 async function processInput(controller,uid,input) {
   if(host!==controller)return failure(503,'The TV host is not connected.');
-  const player=controller.room.players.find(player=>player.id===uid);
+  const player=controller.room.players.find(player=>player.id===uid) || (controller.room.display?.id===uid ? controller.room.display : null);
   if(!player)return failure(403,'Join the room before playing.');
   const previous=remembered(controller,uid,input.id);
   if(previous){await publish(uid,previous);return {status:previous.status,body:{error:previous.error,state:rules.publicState(controller.room,player)}};}
@@ -195,10 +195,10 @@ async function request(url,options={}) {
       stopHost();const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       for(let attempt=0;attempt<8;attempt++) {
         const code=Array.from(crypto.getRandomValues(new Uint8Array(5)),n=>alphabet[n%alphabet.length]).join('');
-        const room=rules.makeRoom({code,mode:body.mode,hostId:uid,name:cleanName(body.name)||'Host',avatar:avatars.has(body.avatar)?body.avatar:'🦊',difficulty:Object.hasOwn(engine.BOT_DELAY_MS,body.botDifficulty)?body.botDifficulty:'Quick Thinker'});
+        const room=rules.makeRoom({code,mode:body.mode,hostId:uid,displayOnly:body.displayOnly===true,name:cleanName(body.name)||'Host',avatar:avatars.has(body.avatar)?body.avatar:'🦊',difficulty:Object.hasOwn(engine.BOT_DELAY_MS,body.botDifficulty)?body.botDifficulty:'Quick Thinker'});
         try {
           if((await get(ref(db,path(code)+'/host'))).exists())continue;
-          await set(ref(db,path(code)),{host:uid,createdAt:now(),expiresAt:now()+TTL,state:publicRoom(room),members:{[uid]:profileWire({name:room.players[0].name,avatar:room.players[0].avatar},'host')},inputs:{[uid]:{id:'host',type:'word-shift/checkpoint',value:{checkpoint:checkpoint(room),controller:{id:tabId,heartbeatAt:now()}}}}});
+          await set(ref(db,path(code)),{host:uid,createdAt:now(),expiresAt:now()+TTL,state:publicRoom(room),members:{[uid]:profileWire({name:room.display?.name || room.players[0].name,avatar:room.display?.avatar || room.players[0].avatar},'host')},inputs:{[uid]:{id:'host',type:'word-shift/checkpoint',value:{checkpoint:checkpoint(room),controller:{id:tabId,heartbeatAt:now()}}}}});
           await startHost(code);
           return json(201,{state:view(publicRoom(host.room)),token:uid});
         } catch(error) {if(attempt===7)throw error;}

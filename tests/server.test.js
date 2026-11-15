@@ -285,3 +285,19 @@ test('offline QR assets and safe local-network address discovery are available',
     assert.notEqual(url.hostname, '127.0.0.1');
   }
 });
+
+test('TV HTTP session restores without a player seat and a phone captain starts the game',async()=>{
+ await new Promise(resolve=>server.listening?resolve():server.once('listening',resolve));
+ const base=`http://127.0.0.1:${server.address().port}`;
+ const post=async(path,token,body={})=>{const response=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json',...(token?{'x-player-token':token}:{})},body:JSON.stringify(body)});return {status:response.status,body:await response.json()};};
+ const tv=await post('/api/rooms',null,{displayOnly:true,mode:'computer'}),code=tv.body.state.code;
+ assert.equal(tv.body.state.players.length,1);assert.equal(tv.body.state.you.isDisplay,true);
+ const phone=await post(`/api/rooms/${code}/join`,null,{name:'Phone Player'});
+ assert.equal(phone.body.state.players[0].name,'Phone Player');assert.equal(phone.body.state.you.canControl,true);
+ await post(`/api/rooms/${code}/ready`,phone.body.token,{ready:true,version:rooms.get(code).version});
+ assert.equal((await post(`/api/rooms/${code}/start`,phone.body.token,{version:rooms.get(code).version})).status,200);
+ const restored=await (await fetch(base+`/api/rooms/${code}`,{headers:{'x-player-token':tv.body.token}})).json();
+ assert.equal(restored.you.isDisplay,true);assert.equal(restored.players.some(p=>p.id===restored.you.id),false);
+ assert.equal((await post(`/api/rooms/${code}/move`,tv.body.token,{word:'dots',version:rooms.get(code).version})).status,403);
+ assert.equal((await post(`/api/rooms/${code}/end`,tv.body.token,{version:rooms.get(code).version})).status,200);
+});

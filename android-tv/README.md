@@ -1,4 +1,4 @@
-# WORD SHIFT for Android TV — 0.6.0 preview
+# WORD SHIFT for Android TV — 0.7.0 preview
 
 [Download APK](../downloads/word-shift-tv-preview.apk). This is a sideloadable preview for Android TV/Google TV and Android-based Fire TV, not a store release.
 
@@ -12,7 +12,7 @@ The app now opens https://nikeelnaidoo5518.github.io/word-shift/ automatically. 
 4. Phones scan the lobby QR, enter nicknames and tap Ready. Same Wi-Fi works; any working internet connection can join.
 5. Start with the remote. Keep the TV app open/awake during play.
 
-The TV host takes one player slot. Phone view and the on-screen keyboard let the host play with the remote. A separate spectator role is not implemented.
+The TV only displays and controls the match; it never takes a player slot or receives a turn. Choose a mode and Create game. Players scan the QR and tap Ready on their phones. Start from the TV or the first phone to join (captain). All word entry happens on phones. The captain can also advance rounds and end the match.
 
 Arrows move focus; OK selects; Back/Menu opens Resume, Game menu, Reload/reconnect and Exit. Game menu includes End game, Return to start, Options and music controls. The native loading screen offers retry when the game cannot load. Same-browser room recovery is supported; clearing app data loses anonymous host identity.
 
