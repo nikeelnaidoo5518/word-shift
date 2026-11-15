@@ -13,6 +13,8 @@ await build({entryPoints:[path.join(root,'online/transport.js')],bundle:true,for
 let html=await readFile(path.join(root,'index.html'),'utf8');
 html=html.replace('<script src="/client.js', '<script src="./firebase-config.js" defer></script>\n<script src="./game-engine.js" defer></script>\n<script src="./room-rules.js" defer></script>\n<script src="./online.js" defer></script>\n<script src="/client.js');
 html=html.replaceAll('src="/','src="./');
+const version=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version;
+for(const script of ['firebase-config.js','game-engine.js','room-rules.js','online.js'])html=html.replace(`src="./${script}"`,`src="./${script}?v=${version}"`);
 html=html.replace(/<div class="surface aside-details">.*?<\/div>/, '<div class="surface aside-details"><b>Phone controllers:</b> scan the QR code with your phone camera.<br><b>Keep this TV open</b> while playing. Internet is required on all devices.</div>');
 html=html.replaceAll('SERVER-AUTHORITATIVE TURNS','TV-HOSTED TURNS').replaceAll('SERVER-VALIDATED ROUND RESULTS','TV-VALIDATED ROUND RESULTS').replaceAll('Local-network multiplayer · no accounts','Online multiplayer · no accounts');
 html=html.replace('Start a local match and share the five-character code with your players.','Start a room on this TV. Phones join by scanning its QR code.').replace('Join a host on the same Wi-Fi network. No account or install needed.','Join your TV room from any internet connection. No player account or install needed.');
