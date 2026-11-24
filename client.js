@@ -411,7 +411,7 @@ function renderVictory() {
   document.getElementById('finalScores').innerHTML = [...summary].sort((a, b) => b.score - a.score).map((player, i) => `<div class="score-row"><span>${['🥇', '🥈', '🥉', '✦'][i]} ${escapeHtml(player.name)}</span><b ${i === 0 ? 'style="color:var(--gold)"' : ''}>${player.score} pts</b></div>`).join('');
 }
 
-document.getElementById('keyboard').innerHTML = 'QWERTYUIOPASDFGHJKLZXCVBNM'.split('').map(letter => `<button onclick="typeKey('${letter}')">${letter}</button>`).join('');
+document.getElementById('keyboard').innerHTML = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(letter => `<button onclick="typeKey('${letter}')">${letter}</button>`).join('');
 // Preserve mobile input focus so the submit button cannot move before click.
 document.querySelector('.phone-input button').addEventListener('pointerdown', event => {
   if (document.activeElement === document.getElementById('answer')) event.preventDefault();
