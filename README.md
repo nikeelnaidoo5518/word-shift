@@ -16,7 +16,7 @@ Install the [Android TV preview APK](downloads/word-shift-tv-preview.apk), launc
 
 Change exactly one letter to make a valid unused word. Every submission passes the turn; invalid words and timeouts also pass it. The shared rules validate turns, dictionary membership, used words, deadlines, and stale requests.
 
-Classic, Head-to-Head, Player vs Computer, Team Battle, and Party Chaos remain available. Round scores, championships, five computer difficulties, and team seats are preserved. Party Chaos special modifier effects beyond existing timer variations remain future work.
+Classic, Head-to-Head, Player vs Computer, Team Battle, and Party Chaos are joined by a solo Daily Challenge. Existing scores, championships, computer levels and team seats are preserved. Party Chaos includes Lightning, Memory and Double Points events.
 
 The TV app is display-only: choose a mode, select Create game, then players scan the QR and join on phones. The TV takes no seat or turns. Each player taps Ready; start on the TV or the first phone (captain). That phone can also advance rounds and end the match. Keep the TV open. Browser-hosted play without `?tv=1` still supports a playing host.
 
@@ -61,3 +61,27 @@ An original, softly synthesized classical-style waltz plays after a user interac
 - **TV options:** saved Normal/Larger text and 4–6% screen margins, selectable with the remote. Automated Chromium checks cover 17 scenes, four TV resolutions and three calibration combinations, plus three phone sizes and 3/4/5-letter controls. Physical TV installation, vendor WebView/overscan, Safari and Firefox testing remain outstanding.
 
 For focused emulator development checks, set `WORDSHIFT_TEST_FILE=online/upgrades-tests.mjs` before `npm run test:firebase`; CI runs the complete list by default. `node scripts/phone-layout.cjs` uses the same optional Playwright/BASE_URL variables as the TV checks.
+
+## 0.9 categories and party features
+
+Choose a mode on TV, then use the Create game options:
+
+- **Category:** Animals, Food, Nature, Sport or Everyday words. Only the start/target words are themed; any valid unused intermediate word may connect them. Every offered pair has a verified dictionary route. The underlying word list remains unreviewed; themed endpoints are not a family-vetted pack.
+- **Quick:** three rounds, up to 25 seconds per turn. Normal match lengths remain available.
+- **Custom:** enter two different dictionary words of equal length (3–8 letters). Impossible pairs are rejected before a room is created. A custom match contains one puzzle/round in the chosen player/team mode.
+- **Team huddle:** optionally give teammates ten discussion seconds before every turn clock starts. Moves/hints wait until it finishes. Pause/reload preserves both the discussion and turn time.
+- **Daily Challenge:** one phone player, one UTC-date puzzle identical across rooms. A deterministic 36-day deck changes the puzzle on consecutive days. Difficulty/category votes and custom overrides cannot change it. The TV remains display-only.
+
+**Hints:** each player has three hint points per match, shared across rounds. The active phone can highlight a letter for one point or reveal one valid unused next word for two. Suggestions still have a route to the target. Clues stay private to that phone, survive reloads and do not submit a word, pass a turn, add score or extend the clock. A new match resets the budget.
+
+**Round vote:** phones can choose category and difficulty in the lobby or between ordinary rounds. Each phone may replace its single vote; both settings are tallied separately. Ties keep the current setting when tied, otherwise use alphabetical order. Starting/advancing consumes the votes. Daily/custom puzzles stay fixed. Leaving/removal removes a phone's vote.
+
+**Party Chaos:** Lightning uses shorter timers. Memory shows the target for five seconds, then hides it until the round ends; pausing freezes the reveal period too. Double Points doubles move/target points without stacking with the finale multiplier. One-letter, unused-word and alternating-turn rules stay the same.
+
+**After a round:** Compare ladders shows the latest player trail beside the exact shortest dictionary route, with move/time/reset counts. Total moves include earlier reset attempts; the displayed trail begins at the last reset. Near-win/final-round banners build rivalry, and completed words get a brief celebration that respects Reduce motion.
+
+**Badges:** Perfect Round needs at least one valid move and no invalid submission/timeout that round. Five-Word Streak spans five of your own successful turns; invalid words/timeouts break it. No Hints Needed requires valid participation in a completed match without spending hint points.
+
+**Personal records:** Menu → Personal records stores best score, fastest target, fewest ladder moves in a round you won, and badges on this browser/app. Records are grouped by mode, format, difficulty, category and huddle setting; changed votes use a voted-mix group. Daily bests favour no-hint runs, then fewer moves, then faster time. There is no global leaderboard or account sync. Clearing browser/app data clears records.
+
+The existing signed TV APK loads this web update; no signing-key change or new wrapper is needed. Reopen the TV app and refresh phone pages. Physical TV and Safari/Firefox testing remain outstanding.

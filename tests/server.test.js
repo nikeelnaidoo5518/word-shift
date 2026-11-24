@@ -320,3 +320,16 @@ test('HTTP pause, captain transfer, offline removal and leave preserve the share
   assert.equal(removed.body.summary.find(p=>p.name==='Alpha').valid,1);
  }finally{abort.abort();}
 });
+
+test('HTTP custom/daily/quick/category settings and private hint/vote endpoints share the rules',async()=>{
+ await new Promise(resolve=>server.listening?resolve():server.once('listening',resolve));const base=`http://127.0.0.1:${server.address().port}`;
+ const post=async(path,token,body={})=>{const r=await fetch(base+path,{method:'POST',headers:{'content-type':'application/json',...(token?{'x-player-token':token}:{})},body:JSON.stringify(body)});return{status:r.status,body:await r.json()};};
+ assert.equal((await fetch(base+'/fun-client.js')).status,200);
+ const before=rooms.size,invalid=await post('/api/rooms',null,{puzzleSource:'custom',customStart:'cat',customTarget:'dogs'});assert.equal(invalid.status,400);assert.equal(rooms.size,before);
+ const created=await post('/api/rooms',null,{displayOnly:true,category:'animals',puzzlePack:'beginner',matchFormat:'quick'}),code=created.body.state.code;
+ const phones=[];for(const name of ['Alpha','Bravo']){const p=await post(`/api/rooms/${code}/join`,null,{name});phones.push(p.body);await post(`/api/rooms/${code}/ready`,p.body.token,{ready:true,version:rooms.get(code).version});}
+ await post(`/api/rooms/${code}/start`,created.body.token,{version:rooms.get(code).version});assert.equal(rooms.get(code).rounds,3);assert.equal(rooms.get(code).current.length,3);assert.equal(rooms.get(code).puzzle.timerSeconds,25);
+ const hint=await post(`/api/rooms/${code}/hint`,phones[0].token,{hintType:'word',version:rooms.get(code).version});assert.equal(hint.status,200);assert.equal(hint.body.you.hintsRemaining,1);assert.ok(hint.body.you.hint.word);
+ const other=await (await fetch(base+`/api/rooms/${code}`,{headers:{'x-player-token':phones[1].token}})).json();assert.equal(other.you.hint,null);assert.equal((await post(`/api/rooms/${code}/vote`,phones[1].token,{category:'food',pack:'expert',version:rooms.get(code).version})).status,409);
+ const daily=await post('/api/rooms',null,{mode:'daily',displayOnly:true});assert.equal(daily.status,201);assert.equal(daily.body.state.dailyDate,new Date().toISOString().slice(0,10));assert.equal(daily.body.state.maxPlayers,1);
+});

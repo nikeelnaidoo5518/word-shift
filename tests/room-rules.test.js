@@ -18,7 +18,7 @@ test('shared TV host rules preserve one-letter validation, turn passing and unus
 });
 
 test('all five modes have identical TV-host rules for readiness, round rotation and room size',()=>{
-  for(const [mode,definition] of Object.entries(MODES)) {
+  for(const [mode,definition] of Object.entries(MODES).filter(([mode])=>mode!=='daily')) {
     const rules=createRules(engine);const room=rules.makeRoom({code:'ABCDE',hostId:'host',mode});
     for(let i=1;i<definition.min;i++)room.players.push({id:'guest'+i,name:'Guest '+i,score:0,ready:true,roundWins:0,team:mode==='teams'?(i%2?'red':'blue'):null});
     assert.equal(rules.action(room,room.players[0],'start',{}).status,200,mode);
@@ -56,7 +56,7 @@ test('only host can end a match; all later moves stop and the deadline is cleare
 });
 
 test('TV display takes no seat or turn in all modes; first human phone can control the match',()=>{
- for(const [mode,config] of Object.entries(MODES)){
+ for(const [mode,config] of Object.entries(MODES).filter(([mode])=>mode!=='daily')){
   const rules=createRules(engine),room=rules.makeRoom({code:'ABCDE',hostId:'tv',mode,displayOnly:true});
   assert.equal(room.players.filter(p=>!p.isBot).length,0);
   assert.equal(rules.action(room,room.display,'start').status,409,'cannot start before phones join');

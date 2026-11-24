@@ -31,3 +31,5 @@ ANDROID_SDK_ROOT=/path/to/android-sdk bash android-tv/build-apk.sh
 Output is in `downloads/`. The local preview signing key is Git-ignored and reused for updates. A build signed with a different key requires uninstalling the old preview and loses saved sessions. CI-generated preview keys may differ. Production signing/store publication remain future work.
 
 Menu now includes Pause, Players & captain, Match summary and saved audio/display options. The TV remains display-only. Use Options → TV screen margin if the picture is cropped, and Text size for larger labels. Physical device testing remains outstanding.
+
+Web game 0.9 adds categories, custom/quick/daily puzzles, private phone hints, voting, huddles, Chaos events, badges, records and ladder comparisons. The signed native 0.8 wrapper loads the update from Pages; reinstalling or changing its signing key is unnecessary.

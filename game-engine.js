@@ -22,8 +22,44 @@ const PUZZLE_PACKS = {
  expert: pairs('stone share,stone start,sleep dream,black white,smile frown,small large,bread toast,heart spade,dream story,plane train,spare stone,green brown'),
 };
 PUZZLE_PACKS.mixed=[...PUZZLE_PACKS.beginner,...PUZZLE_PACKS.intermediate,...PUZZLE_PACKS.expert];
+const CATEGORIES={all:'Any category',animals:'Animals',food:'Food',nature:'Nature',sport:'Sport',everyday:'Everyday words'};
+const CATEGORY_WORDS={
+ animals:{3:'cat dog pig hen fox rat bat cow ewe ape ram',4:'bear lion wolf deer hare mole seal toad goat duck crab swan frog',5:'horse sheep mouse zebra otter shark tiger whale goose camel eagle koala'},
+ food:{3:'ham jam yam pie pea tea egg fig nut rye oat bun',4:'pear bean beet meat rice lime milk cake taco tuna soup fish kiwi herb corn',5:'apple grape peach bread cream sugar toast beans lemon melon olive onion mango honey'},
+ nature:{3:'sun sea sky oak elm ash dew bay ice sap',4:'rain snow wind mist tree leaf rock sand soil pond lake',5:'stone cloud grass storm shore river water earth beach field plant green'},
+ sport:{3:'bat net run win tie cup ski mat gym box',4:'ball goal game race team swim jump shot puck kick play club golf',5:'score track field court coach skate match sport rugby throw swing'},
+ everyday:{3:'pen bag bed cup hat cap box car key map can pan mug',4:'book door home hand desk coat shoe road shop work room lamp',5:'chair table house phone clock paper shirt plate glass money light mouse'}
+};
+const categoryCache=new Map();
+function categoryPool(category,pack='original') {
+ if(!Object.hasOwn(CATEGORY_WORDS,category))return PUZZLE_PACKS[pack] || PUZZLES;
+ const key=category+':'+pack;if(categoryCache.has(key))return categoryCache.get(key);
+ const lengths=pack==='beginner'?[3]:pack==='expert'?[5]:pack==='mixed'?[3,4,5]:[4],pool=[];
+ for(const length of lengths){
+  const names=CATEGORY_WORDS[category][length].split(' ').filter(w=>dictionary.has(w));let added=0;
+  for(let gap=1;gap<names.length && added<24;gap++)for(let i=0;i+gap<names.length && added<24;i++){
+   const start=names[i],target=names[i+gap];if(shortestPath(start,target)){pool.push({start,target});added++;}
+  }
+ }
+ if(!pool.length)throw Error('No solvable puzzles in that category and difficulty.');
+ categoryCache.set(key,pool);return pool;
+}
+function validateCustom(start,target) {
+ const fail=message=>{throw Object.assign(Error(message),{status:400});};
+ start=String(start || '').trim().toLowerCase();target=String(target || '').trim().toLowerCase();
+ if(!/^[a-z]{3,8}$/.test(start) || !/^[a-z]{3,8}$/.test(target) || start.length!==target.length)fail('Use two words of the same length, from 3 to 8 letters.');
+ if(start===target)fail('Choose different start and target words.');
+ if(!dictionary.has(start) || !dictionary.has(target))fail('Both custom words must be in the game dictionary.');
+ const route=shortestPath(start,target);if(!route)fail('Those words have no one-letter route. Try another pair.');
+ return {start,target,route};
+}
+function dateSeed(date){let value=2166136261;for(const letter of date)value=Math.imul(value^letter.charCodeAt(0),16777619)>>>0;return value;}
+function dailyPuzzle(date){
+ const time=Date.parse(date+'T00:00:00Z');if(!Number.isFinite(time) || new Date(time).toISOString().slice(0,10)!==date)throw Error('Use a valid UTC date.');
+ const puzzle=puzzleForRound(Math.floor(time/86400000),'mixed',20261124);return {...puzzle,roundName:'Daily Challenge',timerSeconds:45,dailyDate:date};
+}
 function packOrder(pack,seed) {
- const pool=[...(PUZZLE_PACKS[pack] || PUZZLES)];let value=seed>>>0;
+ const pool=[...(Array.isArray(pack)?pack:PUZZLE_PACKS[pack] || PUZZLES)];let value=seed>>>0;
  for(let i=pool.length-1;i>0;i--){value=(Math.imul(value,1664525)+1013904223)>>>0;const j=value%(i+1);[pool[i],pool[j]]=[pool[j],pool[i]];}
  return pool;
 }
@@ -91,8 +127,8 @@ function targetMatches(word, target) {
   return count;
 }
 
-function puzzleForRound(roundIndex, pack = 'original', seed = 0) {
-  const pool=pack==='original'?PUZZLES:packOrder(pack,seed);
+function puzzleForRound(roundIndex, pack = 'original', seed = 0, category = 'all') {
+  const pool=category!=='all'?packOrder(categoryPool(category,pack),seed):pack==='original'?PUZZLES:packOrder(pack,seed);
   const pair = pool[roundIndex % pool.length];
   const path = shortestPath(pair.start, pair.target, new Set(), COMMON_WORDS) || shortestPath(pair.start, pair.target);
   if (!path) throw new Error(`No dictionary route for ${pair.start} → ${pair.target}`);
@@ -125,6 +161,11 @@ return {
   dictionary,
   PUZZLES,
   PUZZLE_PACKS,
+  CATEGORIES,
+  categoryPool,
+  validateCustom,
+  dailyPuzzle,
+  dateSeed,
   ROUND_NAMES,
   TURN_SECONDS,
   BOT_DELAY_MS,

@@ -123,7 +123,7 @@ function scheduleAI(room) {
   if (room.phase !== 'playing' || !player?.isBot || room.aiTimer) return;
   const expectedDeadline = room.turnDeadline;
   const expectedRound = room.round;
-  const delay = Math.max(0,room.turnDeadline-room.puzzle.timerSeconds*1000+(engine.BOT_DELAY_MS[player.difficulty] || engine.BOT_DELAY_MS['Quick Thinker'])-Date.now());
+  const delay = Math.max(0,(room.turnBeginsAt || room.turnDeadline-room.puzzle.timerSeconds*1000)+(engine.BOT_DELAY_MS[player.difficulty] || engine.BOT_DELAY_MS['Quick Thinker'])-Date.now());
   room.aiTimer = setTimeout(() => {
     room.aiTimer = null;
     if (!rooms.has(room.code) || room.phase !== 'playing' || room.turnDeadline !== expectedDeadline || room.round !== expectedRound || activePlayer(room)?.id !== player.id) return;
@@ -136,7 +136,7 @@ function scheduleAI(room) {
 
 function serveStatic(req, res, pathname) {
   const route = pathname === '/' ? '/index.html' : pathname;
-  if (!new Set(['/index.html', '/client.js', '/music.js', '/tv.js', '/join-code.js', '/vendor/qrcodegen.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
+  if (!new Set(['/index.html', '/client.js', '/fun-client.js', '/music.js', '/tv.js', '/join-code.js', '/vendor/qrcodegen.js', '/data/words-en.json']).has(route)) return error(res, 404, 'Not found');
   const file = path.resolve(ROOT, `.${route}`);
   if (!file.startsWith(ROOT + path.sep)) return error(res, 403, 'Forbidden');
   fs.readFile(file, (err, contents) => {
@@ -185,6 +185,7 @@ const server = http.createServer(async (req, res) => {
       const code = roomCode();
       const room = { code, mode, players, puzzlePack:Object.hasOwn(engine.PUZZLE_PACKS,body.puzzlePack)?body.puzzlePack:'original',puzzleSeed:crypto.randomInt(1,2147483647), hostId: player.id, phase: 'lobby', round: 0, rounds: config.rounds, version: 1, history: [], moves: [], used: new Set(), activeIndex: 0, turnDeadline: null, createdAt: Date.now(), updatedAt: Date.now(), lastActivityAt: Date.now(), hostDisconnectedAt: null, lastMessage: 'Room created. Share the code to invite players.', puzzle: null, resets: 0, unresolved: false, roundWinnerId: null, championId: null, championIds: [], championTeam: null, teamWins: { blue: 0, red: 0 } };
       if (body.displayOnly === true) {room.display = {...player,name:'TV display',isDisplay:true};room.players = players.filter(p=>p.id!==player.id);}
+      try{rules.configureRoom(room,body);}catch(error){return send(res,400,{error:error.message});}
       rooms.set(code, room);
       return send(res, 201, { state: publicState(room, room.display || player), token: player.token, joinUrl: `/?join=${code}` });
     }
@@ -207,7 +208,7 @@ const server = http.createServer(async (req, res) => {
       touch(room);
       return send(res, 201, { state: publicState(room, player), token: player.token });
     }
-    const roomMatch = p.match(/^\/api\/rooms\/([A-Z2-9]+)(?:\/(ready|start|move|next|restart|end|pause|resume|leave|remove|captain))?$/);
+    const roomMatch = p.match(/^\/api\/rooms\/([A-Z2-9]+)(?:\/(ready|start|move|next|restart|end|pause|resume|leave|remove|captain|hint|vote))?$/);
     if (req.method === 'GET' && roomMatch && !roomMatch[2]) {
       const room = rooms.get(roomMatch[1]);
       const player = requirePlayer(room, getToken(req, url));

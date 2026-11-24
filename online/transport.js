@@ -11,6 +11,7 @@ const failure = (status, error) => ({status,body:{error}});
 const tabId = sessionStorage.getItem('wordshift.online.tab') || id();
 sessionStorage.setItem('wordshift.online.tab',tabId);
 let app, auth, db, engine, rules, bootPromise, offset = 0, connected = false, host = null;
+const privateHints=new Map();
 let queue = Promise.resolve(), hostGeneration = 0, hostStart=null;
 // Keep the five-character WORD SHIFT UI; the database uses a W-prefixed six-character key.
 // These records use the existing SA Trivia transport schema, without editing its rules.
@@ -50,8 +51,9 @@ function view(state, uid=auth.currentUser.uid) {
   const next=JSON.parse(JSON.stringify(state));
   next.players ||= [];next.history ||= [];next.moves ||= [];next.championIds ||= [];
   const player=next.players.find(player=>player.id===uid) || (next.displayOnly && uid===next.hostId ? {id:uid,name:'TV display',isDisplay:true} : null);
-  next.you=player ? {...player,isHost:uid===next.hostId,canControl:uid===next.hostId || uid===next.captainId,isActive:uid===next.activePlayerId} : null;
-  next.secondsLeft=next.turnDeadline ? Math.max(0,Math.ceil((next.turnDeadline-now())/1000)) : 0;
+  next.you=player ? {...player,isHost:uid===next.hostId,canControl:uid===next.hostId || uid===next.captainId,isActive:uid===next.activePlayerId,hintsRemaining:Math.max(0,3-(player.hintsSpent || 0))} : null;
+  const hint=privateHints.get(next.code);if(next.you)next.you.hint=hint && hint.matchId===next.matchId && hint.round===next.round && hint.from===next.current && uid===next.activePlayerId?hint:null;
+  next.secondsLeft=next.phase==='paused'?next.secondsLeft || 0:next.turnDeadline ? Math.max(0,Math.min(next.timerSeconds,Math.ceil((next.turnDeadline-now())/1000))) : 0;
   return next;
 }
 async function metadata(code) {
@@ -117,7 +119,7 @@ async function restoreHost(code) {
       if(room.phase!=='playing')return;
       if(now()>=room.turnDeadline){rules.applyTimeout(room);await publish();return;}
       const player=rules.activePlayer(room);
-      const due=room.turnDeadline-room.puzzle.timerSeconds*1000+(engine.BOT_DELAY_MS[player?.difficulty] || 1100);
+      const due=(room.turnBeginsAt || room.turnDeadline-room.puzzle.timerSeconds*1000)+(engine.BOT_DELAY_MS[player?.difficulty] || 1100);
       if(player?.isBot && now()>=due) {
         const word=engine.chooseAIMove(room.current,room.puzzle.target,room.used,player.difficulty);
         if(word)rules.acceptMove(room,player,word);else rules.applyTimeout(room);
@@ -129,7 +131,7 @@ async function restoreHost(code) {
     if(host!==controller || !connected)return;
     try {
       const result=await runTransaction(ref(db,privatePath(code)+'/controller'),current=>current?.id===tabId?{id:tabId,heartbeatAt:now()}:undefined,{applyLocally:false});
-      if(!result.committed)stopHost();else await update(ref(db,path(code)+'/state'),{hostSeenAt:now()});
+      if(!result.committed)stopHost();else await update(ref(db,path(code)+'/state'),{hostSeenAt:now(),target:rules.publicState(controller.room,null).target,targetHidden:rules.publicState(controller.room,null).targetHidden});
     } catch { /* Firebase will reconnect; no host writes run while offline. */ }
   },5000);
   await publish();
@@ -149,10 +151,10 @@ async function publish(uid, response) {
   await update(ref(db,path(host.code)),updates);
 }
 function remembered(controller,uid,requestId) {return (controller.ledger[uid] || []).find(item=>item.id===requestId);}
-function remember(controller,uid,response) {controller.ledger[uid]=[...(controller.ledger[uid] || []),{id:response.id,status:response.status,error:response.error || null}].slice(-32);}
+function remember(controller,uid,response) {controller.ledger[uid]=[...(controller.ledger[uid] || []),{id:response.id,status:response.status,error:response.error || null,hint:response.hint || null}].slice(-32);}
 async function respond(controller,uid,requestId,result) {
   if(host!==controller)return;
-  const response={id:requestId,status:result.status,error:result.body.error || null};
+  const response={id:requestId,status:result.status,error:result.body.error || null,hint:rules.privateHint(controller.room,uid)};
   remember(controller,uid,response);await publish(uid,response);
 }
 async function joinMember(controller,uid,profile) {
@@ -203,10 +205,10 @@ async function request(url,options={}) {
     const body=JSON.parse(options.body || '{}'),uid=auth.currentUser.uid;
     if(p==='/api/join-origins')return json(200,{origins:[new URL('.',location.href).href]});
     if(p==='/api/rooms' && options.method==='POST') {
-      stopHost();const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
       for(let attempt=0;attempt<8;attempt++) {
         const code=Array.from(crypto.getRandomValues(new Uint8Array(5)),n=>alphabet[n%alphabet.length]).join('');
-        const room=rules.makeRoom({code,mode:body.mode,hostId:uid,puzzlePack:body.puzzlePack,puzzleSeed:crypto.getRandomValues(new Uint32Array(1))[0],displayOnly:body.displayOnly===true,name:cleanName(body.name)||'Host',avatar:avatars.has(body.avatar)?body.avatar:'🦊',difficulty:Object.hasOwn(engine.BOT_DELAY_MS,body.botDifficulty)?body.botDifficulty:'Quick Thinker'});
+        const room=rules.makeRoom({code,mode:body.mode,hostId:uid,puzzlePack:body.puzzlePack,category:body.category,matchFormat:body.matchFormat,teamDiscussion:body.teamDiscussion,puzzleSource:body.puzzleSource,customStart:body.customStart,customTarget:body.customTarget,puzzleSeed:crypto.getRandomValues(new Uint32Array(1))[0],displayOnly:body.displayOnly===true,name:cleanName(body.name)||'Host',avatar:avatars.has(body.avatar)?body.avatar:'🦊',difficulty:Object.hasOwn(engine.BOT_DELAY_MS,body.botDifficulty)?body.botDifficulty:'Quick Thinker'});
         try {
           if((await get(ref(db,path(code)+'/host'))).exists())continue;
           await set(ref(db,path(code)),{host:uid,createdAt:now(),expiresAt:now()+TTL,state:publicRoom(room),members:{[uid]:profileWire({name:room.display?.name || room.players[0].name,avatar:room.display?.avatar || room.players[0].avatar},'host')},inputs:{[uid]:{id:'host',type:'word-shift/checkpoint',value:{checkpoint:checkpoint(room),controller:{id:tabId,heartbeatAt:now()}}}}});
@@ -215,7 +217,7 @@ async function request(url,options={}) {
         } catch(error) {if(attempt===7)throw error;}
       }
     }
-    const match=p.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{5})(?:\/(join|ready|start|move|next|restart|end|pause|resume|leave|remove|captain))?$/);
+    const match=p.match(/^\/api\/rooms\/([A-HJ-NP-Z2-9]{5})(?:\/(join|ready|start|move|next|restart|end|pause|resume|leave|remove|captain|hint|vote))?$/);
     if(!match)return json(404,{error:'Not found.'});
     const code=match[1],action=match[2],meta=await metadata(code);
     if(!action) {
@@ -233,7 +235,7 @@ async function request(url,options={}) {
       if(result.status>=400)return json(result.status,{error:result.error});
       return json(result.status,{state:view((await get(ref(db,path(code)+'/state'))).val()),token:uid});
     }
-    const input={id:id(),action,version:body.version ?? -1,...(action==='move'?{word:String(body.word || '').slice(0,8)}:{}),...(action==='ready'?{ready:Boolean(body.ready)}:{}),...(['remove','captain'].includes(action)?{playerId:String(body.playerId || '').slice(0,128)}:{})};
+    const input={id:id(),action,...(action==='hint'?{hintType:String(body.hintType || '').slice(0,8)}:{}),...(action==='vote'?{category:String(body.category || '').slice(0,16),pack:String(body.pack || '').slice(0,16)}:{}),version:body.version ?? -1,...(action==='move'?{word:String(body.word || '').slice(0,8)}:{}),...(action==='ready'?{ready:Boolean(body.ready)}:{}),...(['remove','captain'].includes(action)?{playerId:String(body.playerId || '').slice(0,128)}:{})};
     let result;
     if(meta.host===uid) {
       if(!host || host.code!==code)await startHost(code);
@@ -241,6 +243,7 @@ async function request(url,options={}) {
       return json(result.status,result.body);
     }
     result=await waitResponse(code,input.id,()=>set(ref(db,path(code)+'/inputs/'+uid),{id:input.id,type:'word-shift/input',value:input}));
+    if(Object.hasOwn(result,'hint'))privateHints.set(code,result.hint);
     const state=view((await get(ref(db,path(code)+'/state'))).val());
     return json(result.status,result.status>=400?{error:result.error,state}:state);
   } catch(error) {return json(error.status || 503,{error:friendly(error)});}
@@ -266,6 +269,7 @@ function events(code) {
         if(latest.exists()){currentExpiry=latest.val().expiresAt;emit('state',view(latest.val()));}
       }catch(error){if(currentExpiry<=now())emit('expired',{message:'This room expired. Create a new room.'});else fail(error);}
     }));
+    cleanups.push(onValue(ref(db,responsePath(code,uid)),async snap=>{const response=snap.val();if(closed || !response || !Object.hasOwn(response,'hint'))return;privateHints.set(code,response.hint);try{const latest=(await get(ref(db,path(code)+'/state'))).val();if(latest && connected && !closed)emit('state',view(latest));}catch{}}));
     cleanups.push(onValue(ref(db,path(code)+'/state'),snap=>{
       if(closed)return;
       if(!snap.exists()){emit('expired',{message:'This room is no longer available. Create a new room.'});source.close();return;}

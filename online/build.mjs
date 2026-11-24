@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const out=path.join(root,'dist');
 await rm(out,{recursive:true,force:true});await mkdir(out,{recursive:true});
-for(const name of ['client.js','music.js','tv.js','join-code.js','game-engine.js','room-rules.js','data','vendor','THIRD_PARTY_NOTICES.txt'])await cp(path.join(root,name),path.join(out,name),{recursive:true});
+for(const name of ['client.js','fun-client.js','music.js','tv.js','join-code.js','game-engine.js','room-rules.js','data','vendor','THIRD_PARTY_NOTICES.txt'])await cp(path.join(root,name),path.join(out,name),{recursive:true});
 let config=await readFile(path.join(root,'online/firebase-config.js'),'utf8');
 if(process.env.WORDSHIFT_EMULATORS==='1')config=`globalThis.WORD_SHIFT_FIREBASE=${JSON.stringify({apiKey:'demo-key',projectId:'demo-word-shift',databaseURL:'https://demo-word-shift-default-rtdb.firebaseio.com',appId:'demo-app',emulators:{auth:9099,database:9000}})};`;
 await writeFile(path.join(out,'firebase-config.js'),config);

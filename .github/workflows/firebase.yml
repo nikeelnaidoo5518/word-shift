@@ -8,6 +8,7 @@ on:
       - 'room-rules.js'
       - 'game-engine.js'
       - 'client.js'
+      - 'fun-client.js'
       - 'index.html'
       - 'music.js'
       - 'tv.js'
